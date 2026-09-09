@@ -10,13 +10,13 @@ import { brand } from "@/config/brand";
 import {
   Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
-  Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle
+  Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, PhoneForwarded
 } from "lucide-react";
 import { sendCsat } from "@/lib/csat.functions";
 import { toast } from "sonner";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { sendWhatsappText, sendWhatsappMedia, sendInternalNote, setContactIaActive, summarizeConversation, transcribeAudioMessage } from "@/lib/evolution.functions";
-import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner } from "@/lib/chat-copilot.functions";
+import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner, forwardLeadSummaryManual } from "@/lib/chat-copilot.functions";
 import { markConversationSeen, sendTypingPresence } from "@/lib/whatsapp.functions";
 import { LeadDrawer, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
 import { listTemplates, saveTemplate, deleteTemplate, type MessageTemplate } from "@/lib/templates.functions";
@@ -73,11 +73,13 @@ function ConversasPage() {
   const assignOwnerFn = useServerFn(assignConversationOwner);
   const markSeenFn = useServerFn(markConversationSeen);
   const sendPresenceFn = useServerFn(sendTypingPresence);
+  const forwardSummaryFn = useServerFn(forwardLeadSummaryManual);
 
   // Estados do Copiloto IA e PIX
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [polishing, setPolishing] = useState(false);
   const [pixModalOpen, setPixModalOpen] = useState(false);
+  const [forwardingSummary, setForwardingSummary] = useState(false);
   const [pixValorInput, setPixValorInput] = useState("");
   const [pixDescInput, setPixDescInput] = useState("");
   const [sendingPix, setSendingPix] = useState(false);
@@ -336,6 +338,26 @@ function ConversasPage() {
       setSummaryOpen(false);
     } catch (e: any) {
       toast.error(e?.message || "Erro ao salvar nota interna");
+    }
+  }
+
+  async function handleForwardSummary(customDest?: string) {
+    if (!active) return;
+    setForwardingSummary(true);
+    try {
+      const res = await forwardSummaryFn({
+        data: {
+          numero: active,
+          contatoNome: activeConv?.nome ?? null,
+          destinationNumber: customDest || undefined,
+        },
+      });
+      toast.success(`Resumo executivo encaminhado com sucesso via WhatsApp para ${res.destination}!`);
+      setSummaryOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao encaminhar resumo");
+    } finally {
+      setForwardingSummary(false);
     }
   }
 
@@ -907,6 +929,17 @@ function ConversasPage() {
                   >
                     <Sparkles className="size-3.5 mr-1 text-purple-600 dark:text-purple-400" /> Resumo IA
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleForwardSummary()}
+                    disabled={forwardingSummary}
+                    title="Gera resumo com IA e encaminha via WhatsApp para a equipe"
+                    className="bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    {forwardingSummary ? <Loader2 className="size-3.5 animate-spin mr-1 text-emerald-600" /> : <PhoneForwarded className="size-3.5 mr-1 text-emerald-600 dark:text-emerald-400" />}
+                    Encaminhar
+                  </Button>
                   <label className="flex items-center gap-2 text-[12px] text-muted-foreground font-medium">
                     <Bot className="size-3.5" /> IA
                     <Switch checked={iaAtivaAqui} onCheckedChange={(v) => void toggleIa(v)} />
@@ -1247,7 +1280,7 @@ function ConversasPage() {
             >
               Copiar
             </Button>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
@@ -1259,9 +1292,18 @@ function ConversasPage() {
                 size="sm"
                 onClick={() => void handleSaveSummaryAsNote()}
                 disabled={summaryLoading || !summaryText}
-                className="bg-amber-600 hover:bg-amber-700 text-white"
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
               >
-                <Lock className="size-3.5 mr-1" /> Salvar como Nota Interna
+                <Lock className="size-3.5 mr-1" /> Nota Interna
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleForwardSummary()}
+                disabled={summaryLoading || forwardingSummary}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+              >
+                {forwardingSummary ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <PhoneForwarded className="size-3.5 mr-1" />}
+                Encaminhar no WhatsApp
               </Button>
             </div>
           </DialogFooter>

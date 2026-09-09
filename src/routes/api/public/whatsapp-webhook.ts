@@ -316,6 +316,22 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               });
             } catch (e: any) { console.error("[transbordo send]", e?.message); }
 
+            // Gera e encaminha resumo executivo do lead via WhatsApp para o número de transferência configurado
+            try {
+              const { generateAndForwardLeadSummary } = await import("@/lib/lead-handover.server");
+              generateAndForwardLeadSummary({
+                supabase: supabaseAdmin,
+                companyId,
+                userId,
+                leadNumber: number,
+                leadName: pushName,
+                reason: "Cliente solicitou atendimento humano no WhatsApp",
+                stageName: stages[0]?.nome || "Conversas",
+              }).catch((err) => console.error("[lead-handover forward error]", err?.message));
+            } catch (e: any) {
+              console.error("[lead-handover import error]", e?.message);
+            }
+
             await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
             return new Response("human-handover", { status: 200 });
           }
@@ -491,8 +507,26 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             console.error("[ai]", e?.message);
           }
 
-          const { parts, stage, agendar, fotoUrl, pixValor } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
+          const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
           const finalParts = sanitizeAiParts(responderEmPartes ? parts : [parts.join(" ")]);
+
+          // Transbordo inteligente acionado pela própria IA
+          if (encaminharHumano) {
+            try {
+              const { generateAndForwardLeadSummary } = await import("@/lib/lead-handover.server");
+              generateAndForwardLeadSummary({
+                supabase: supabaseAdmin,
+                companyId,
+                userId,
+                leadNumber: number,
+                leadName: pushName,
+                reason: encaminharHumano,
+                stageName: stage || estagioAtual,
+              }).catch((err) => console.error("[lead-handover ai forward error]", err?.message));
+            } catch (e: any) {
+              console.error("[lead-handover import error]", e?.message);
+            }
+          }
 
           // Gera PIX Copia e Cola instantâneo se a IA definiu valor de pagamento
           const chavePix = (cfg as any)?.chave_pix;

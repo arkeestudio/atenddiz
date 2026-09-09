@@ -11,10 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard } from "lucide-react";
+import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard, ShoppingBag, Headphones, ArrowRightLeft, PhoneForwarded } from "lucide-react";
 import { brand } from "@/config/brand";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { testAiReply } from "@/lib/evolution.functions";
+import { testForwardSummary } from "@/lib/chat-copilot.functions";
 import { generateAgentConfig, analyzeBusinessBrief, type BriefQuestion } from "@/lib/agent-ai.functions";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { defaultHours, DIA_LABEL, type BusinessHours } from "@/lib/business-hours";
@@ -78,6 +79,9 @@ function AgentePage() {
   const [testMsg, setTestMsg] = useState("Oi, vocês entregam aqui?");
   const [testReply, setTestReply] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
+  const [focoAtendimento, setFocoAtendimento] = useState<"vendas" | "suporte" | "ambos">("vendas");
+  const [testingForward, setTestingForward] = useState(false);
+  const testForwardFn = useServerFn(testForwardSummary);
 
   async function reload() {
     if (!companyId) return;
@@ -85,6 +89,7 @@ function AgentePage() {
     if (data && data.nome_agente && data.nome_agente.trim() && data.sobre_empresa) {
       setHasConfig(true);
       setCfg(data);
+      setFocoAtendimento((data.foco_atendimento as any) || "vendas");
       setTamanhoResposta((data.tamanho_resposta as any) || "curtas");
       setTelefone(data.telefone_transferencia || "");
       setPalavraPausar(data.palavra_pausar || "/pausar");
@@ -96,9 +101,10 @@ function AgentePage() {
       setChavePix((data as any).chave_pix || "");
       setTitularPix((data as any).titular_pix || "");
       setInstrucoesPagamento((data as any).instrucoes_pagamento || "");
-      setPromptPreview(buildSystemPrompt(data as any, { responderEmPartes: data.responder_em_partes ?? true, produtos: [] }));
+      setPromptPreview(buildSystemPrompt({ ...data, foco_atendimento: data.foco_atendimento || "vendas" } as any, { responderEmPartes: data.responder_em_partes ?? true, produtos: [] }));
     } else if (data) {
       setCfg(data);
+      setFocoAtendimento((data.foco_atendimento as any) || "vendas");
       setBaseConhecimento((data as any).base_conhecimento || "");
       setHorarios((data as any).horarios_atendimento || defaultHours());
       setMsgFora((data as any).mensagem_fora_horario || "Olá! No momento estamos fora do horário de atendimento. Retornamos em breve.");
@@ -109,6 +115,21 @@ function AgentePage() {
     setLoading(false);
   }
   useEffect(() => { void reload(); }, [companyId]);
+
+  async function handleTestForward() {
+    if (!telefone.trim()) {
+      return toast.error("Informe um número de WhatsApp com DDD para testar o envio de resumo.");
+    }
+    setTestingForward(true);
+    try {
+      await testForwardFn({ data: { destinationNumber: telefone } });
+      toast.success(`Mensagem de teste de resumo enviada com sucesso para o WhatsApp ${telefone}!`);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao enviar teste de encaminhamento.");
+    } finally {
+      setTestingForward(false);
+    }
+  }
 
   async function runAnalyze() {
     if (descricao.trim().length < 20) {
@@ -165,6 +186,7 @@ function AgentePage() {
     setSaving(true);
     const payload = {
       ...cfg,
+      foco_atendimento: focoAtendimento,
       tamanho_resposta: tamanhoResposta,
       telefone_transferencia: telefone,
       palavra_pausar: palavraPausar,
@@ -351,6 +373,66 @@ function AgentePage() {
 
       <div className="grid lg:grid-cols-[1fr_minmax(340px,400px)] gap-6">
         <div className="space-y-4">
+          <Section title="Modo de Atuação da IA (Vendedor vs Assistente)" icon={<ShoppingBag className="size-3.5" />}>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Defina como a sua IA deve se comportar no WhatsApp: fechar vendas ativamente ou focar em atendimento e suporte cordial.
+            </p>
+            <div className="grid sm:grid-cols-3 gap-2.5 pt-1">
+              {[
+                {
+                  id: "vendas",
+                  label: "Vendedor Ativo",
+                  badge: "Mais Vendas",
+                  icon: <ShoppingBag className="size-4 text-emerald-500" />,
+                  desc: "Postura ativa de fechamento. Quebra objeções, recomenda itens, sugere combos e envia PIX Copia e Cola para fechar pedidos na hora.",
+                  color: "border-emerald-500/50 bg-emerald-500/10",
+                },
+                {
+                  id: "suporte",
+                  label: "Assistente de Atendimento",
+                  badge: "Suporte",
+                  icon: <Headphones className="size-4 text-sky-500" />,
+                  desc: "Postura acolhedora e informativa. Esclarece dúvidas, tira dúvidas de horários, produtos e regras sem forçar compras nem insistir em pagamentos.",
+                  color: "border-sky-500/50 bg-sky-500/10",
+                },
+                {
+                  id: "ambos",
+                  label: "Modo Híbrido",
+                  badge: "Equilibrado",
+                  icon: <ArrowRightLeft className="size-4 text-purple-500" />,
+                  desc: "Equilíbrio inteligente: resolve dúvidas primeiro com atenção e conduz para a venda caso o cliente demonstre interesse de compra.",
+                  color: "border-purple-500/50 bg-purple-500/10",
+                },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setFocoAtendimento(opt.id as any)}
+                  className={`text-left rounded-xl border p-3.5 transition flex flex-col justify-between ${
+                    focoAtendimento === opt.id
+                      ? `${opt.color} ring-1 ring-[var(--brand)] shadow-sm`
+                      : "border-[var(--border)] bg-[var(--panel-2)] hover:border-[var(--brand)]/50 opacity-80 hover:opacity-100"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <span className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                        {opt.icon}
+                        {opt.label}
+                      </span>
+                      {focoAtendimento === opt.id && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--brand)] text-primary-foreground">
+                          Ativo
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{opt.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </Section>
+
           <Section title="O que a IA aprendeu" icon={<Sparkles className="size-3.5" />}>
             <SummaryRow label="Empresa" value={cfg?.nome_empresa} />
             <SummaryRow label="Segmento" value={cfg?.segmento} />
@@ -501,6 +583,44 @@ function AgentePage() {
             </div>
           </Section>
 
+          <Section title="Encaminhamento & Transbordo com Resumo Inteligente" icon={<PhoneForwarded className="size-3.5" />}>
+            <div className="space-y-3.5">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Quando um cliente pedir atendimento humano ou precisar de um atendente, a IA gera automaticamente um <b>resumo executivo</b> com o perfil, interesse e pontos discutidos e encaminha para o WhatsApp abaixo com o link para você assumir a conversa.
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">WhatsApp de Destino para Receber os Resumos (com DDD)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={telefone}
+                    onChange={(e) => setTelefone(e.target.value)}
+                    placeholder="Ex: 11999990000 ou +55 11 99999-0000"
+                    className="text-xs font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleTestForward()}
+                    disabled={testingForward || !telefone.trim()}
+                    className="shrink-0 text-xs gap-1.5 border-[var(--brand)]/40 hover:bg-[var(--brand)]/10"
+                  >
+                    {testingForward ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                    Testar Envio
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3 text-[11px] text-muted-foreground leading-relaxed space-y-1">
+                <div className="font-semibold text-foreground flex items-center gap-1">
+                  💡 <span>Como a IA encaminha:</span>
+                </div>
+                <p>
+                  A IA pausa as respostas automáticas para não atrapalhar o humano e envia uma mensagem formatada contendo: <b>Nome do cliente, WhatsApp, etapa no CRM e o resumo inteligente do que ele precisa</b> com link direto para abrir no WhatsApp.
+                </p>
+              </div>
+            </div>
+          </Section>
+
           <Collapsible>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--panel)] overflow-hidden">
               <CollapsibleTrigger className="w-full flex items-center justify-between p-4 hover:bg-[var(--panel-2)] transition">
@@ -520,10 +640,6 @@ function AgentePage() {
                       <SelectItem value="longas">Longas (explicativas)</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Telefone para transferir atendimento</Label>
-                  <Input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+55 11 99999-0000" />
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">

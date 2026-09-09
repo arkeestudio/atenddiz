@@ -226,3 +226,74 @@ export const assignConversationOwner = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const forwardLeadSummaryManual = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (d: {
+      numero: string;
+      destinationNumber?: string;
+      contatoNome?: string | null;
+      motivo?: string | null;
+    }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+    const { generateAndForwardLeadSummary } = await import("./lead-handover.server");
+
+    const res = await generateAndForwardLeadSummary({
+      supabase,
+      companyId,
+      userId,
+      leadNumber: data.numero,
+      leadName: data.contatoNome,
+      reason: data.motivo || "Encaminhamento manual pelo atendente",
+      destinationNumber: data.destinationNumber,
+    });
+
+    if (!res.ok && res.error) {
+      throw new Error(res.error);
+    }
+
+    return res;
+  });
+
+export const testForwardSummary = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { destinationNumber: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+    const { sanitizeWhatsAppNumber } = await import("./lead-handover.server");
+    const { getWhatsAppProvider } = await import("./whatsapp-provider");
+
+    const cleanDest = sanitizeWhatsAppNumber(data.destinationNumber);
+    if (!cleanDest || cleanDest.length < 10) {
+      throw new Error("Informe um número de WhatsApp válido com DDD.");
+    }
+
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_name, status")
+      .eq("company_id", companyId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!inst?.instance_name) {
+      throw new Error("WhatsApp não está conectado para enviar mensagens.");
+    }
+
+    const msg =
+      `🔔 *TESTE DE ENCAMINHAMENTO DE RESUMO — ATENDDIZ*\n\n` +
+      `Esta é uma mensagem de teste da sua configuração de transbordo e encaminhamento.\n\n` +
+      `✅ *Status:* Tudo pronto!\n` +
+      `Quando um cliente pedir atendimento humano ou for transferido, você receberá um resumo detalhado e o link direto do cliente aqui.\n\n` +
+      `_Atenddiz Inteligência Comercial_ 🚀`;
+
+    const provider = getWhatsAppProvider();
+    await provider.sendText(companyId, inst.instance_name, cleanDest, msg);
+
+    return { ok: true, destination: cleanDest };
+  });
+

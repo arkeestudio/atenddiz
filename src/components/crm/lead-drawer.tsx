@@ -10,8 +10,9 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Save, Trash2, Send, Sparkles } from "lucide-react";
+import { Loader2, Save, Trash2, Send, Sparkles, PhoneForwarded } from "lucide-react";
 import { generateLeadFollowup, sendLeadFollowup } from "@/lib/sales-recovery.functions";
+import { forwardLeadSummaryManual } from "@/lib/chat-copilot.functions";
 
 export interface LeadCard {
   id: string; numero: string; nome: string | null;
@@ -57,6 +58,28 @@ export function LeadDrawer({
     onChanged();
   }
 
+  const [forwarding, setForwarding] = useState(false);
+  const forwardSummaryFn = useServerFn(forwardLeadSummaryManual);
+
+  async function handleForwardLead() {
+    if (!local?.numero) return;
+    setForwarding(true);
+    try {
+      const res = await forwardSummaryFn({
+        data: {
+          numero: local.numero,
+          contatoNome: local.nome,
+          motivo: "Encaminhado manualmente pelo CRM",
+        },
+      });
+      toast.success(`Resumo do lead encaminhado com sucesso via WhatsApp para ${res.destination}!`);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao encaminhar resumo");
+    } finally {
+      setForwarding(false);
+    }
+  }
+
   return (
     <Sheet open={!!card} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto bg-[var(--panel)] border-l border-[var(--border)]">
@@ -67,6 +90,17 @@ export function LeadDrawer({
               <SheetTitle className="truncate text-base">{local.nome || local.numero}</SheetTitle>
               <div className="text-xs text-muted-foreground font-mono">{local.numero}</div>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleForwardLead()}
+              disabled={forwarding}
+              title="Gera resumo com IA e envia via WhatsApp para a equipe"
+              className="text-xs gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 shrink-0"
+            >
+              {forwarding ? <Loader2 className="size-3.5 animate-spin" /> : <PhoneForwarded className="size-3.5" />}
+              Encaminhar Resumo
+            </Button>
           </div>
         </SheetHeader>
 

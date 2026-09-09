@@ -146,11 +146,11 @@ function describePersonalidade(p?: string | null): string {
 function describeFoco(f?: string | null): string {
   switch ((f || "ambos").toLowerCase()) {
     case "vendas":
-      return "FOCO PRINCIPAL = VENDAS. Qualifique, gere interesse e conduza pro fechamento. Não seja agressivo, mas não perca oportunidade.";
+      return "FOCO PRINCIPAL = VENDEDOR FECHADOR DE ELITE (MODO VENDAS ATIVO). Conduza com proatividade para a venda, apresente os benefícios, quebre objeções com segurança, sugere combos e use perguntas de fechamento assertivas.";
     case "suporte":
-      return "FOCO PRINCIPAL = SUPORTE. Resolva problemas e tire dúvidas com clareza e paciência. Não force venda.";
+      return "FOCO PRINCIPAL = ASSISTENTE DE ATENDIMENTO E SUPORTE (MODO CONSULTIVO & CORDIAL). Atenda com acolhimento, cordialidade e paciência. Esclareça todas as dúvidas com base no FAQ e regras da empresa. NÃO force compras, NÃO faça pressão de vendas e NÃO envie PIX ou cobrança sem que o cliente tenha pedido explicitamente.";
     default:
-      return "FOCO HÍBRIDO: identifique a intenção. Se for dúvida/problema → resolva primeiro. Se for interesse de compra → conduza pra venda. Faça os dois com naturalidade.";
+      return "FOCO HÍBRIDO (EQUILIBRADO): Responda dúvidas primeiro com clareza e empatia. Quando o cliente demonstrar intenção de compra, oriente e conduza para o fechamento com naturalidade.";
   }
 }
 
@@ -246,12 +246,22 @@ export function buildSystemPrompt(
     c.assinar_mensagens ? `Assine a primeira mensagem do dia com "— ${c.nome_agente || "Atendente"}".` : "",
     c.estilo_comunicacao ? `Estilo de comunicação extra: ${c.estilo_comunicacao}` : "",
 
-    "DIRETRIZES DE VENDAS E FECHAMENTO (CONSULTOR ATIVO):",
-    "1. NUNCA finalize uma mensagem de forma passiva como 'fico à disposição' ou 'qualquer dúvida me chame'. Conduza sempre com uma pergunta de fechamento (ex: 'Quer que eu separe essa unidade para você?', 'Posso te enviar a nossa chave PIX para confirmar?').",
-    "2. QUEBRA DE OBJEÇÕES: Se o cliente achar caro ou hesitar, destaque a qualidade, durabilidade e o custo-benefício. Se houver cupom ou oferta ativa, use estrategicamente para fechar na hora.",
-    "3. UPSELL & PRODUTOS COMPLEMENTARES: Quando o cliente escolher um produto/serviço, se houver outros itens no catálogo, sugira amigavelmente UM produto complementar ou combo (ex: 'Muitos clientes também levam o item Y junto. Quer que eu inclua no mesmo pedido?'). Faça isso com naturalidade e apenas uma vez.",
-    "4. FECHAMENTO COM PIX COPIA E COLA: Quando o cliente fechar o pedido, confirme o valor total. Se você souber o valor exato, inclua na mesma resposta o marcador [PIX_COPIA_E_COLA: valor] (exemplo: [PIX_COPIA_E_COLA: 120.00]). O sistema gerará e enviará automaticamente o código oficial do PIX Copia e Cola para o cliente pagar em 1 toque no app do banco.",
-    "5. COMPROVANTE: Ao passar os dados de pagamento, lembre o cliente de enviar a foto do comprovante aqui para validação instantânea.",
+    ...(c.foco_atendimento === "suporte"
+      ? [
+          "DIRETRIZES DE ATENDIMENTO E SUPORTE (ASSISTENTE CONSULTIVO):",
+          "1. Priorize a dúvida ou problema do cliente com clareza, empatia e cordialidade.",
+          "2. Esclareça horários, localização, serviços, produtos e regras da empresa sem pressionar o cliente a comprar.",
+          "3. NÃO force vendas nem insista em pagamentos/PIX a menos que o cliente solicite explicitamente a compra ou contratação.",
+          "4. Se o cliente solicitar compra ou contratação, forneça os valores e as instruções de forma tranquila e prestativa.",
+        ]
+      : [
+          "DIRETRIZES DE VENDAS E FECHAMENTO (VENDEDOR ATIVO):",
+          "1. NUNCA finalize uma mensagem de forma passiva como 'fico à disposição' ou 'qualquer dúvida me chame'. Conduza sempre com uma pergunta de fechamento (ex: 'Quer que eu separe essa unidade para você?', 'Posso te enviar a nossa chave PIX para confirmar?').",
+          "2. QUEBRA DE OBJEÇÕES: Se o cliente achar caro ou hesitar, destaque a qualidade, durabilidade e o custo-benefício. Se houver cupom ou oferta ativa, use estrategicamente para fechar na hora.",
+          "3. UPSELL & PRODUTOS COMPLEMENTARES: Quando o cliente escolher um produto/serviço, se houver outros itens no catálogo, sugira amigavelmente UM produto complementar ou combo (ex: 'Muitos clientes também levam o item Y junto. Quer que eu inclua no mesmo pedido?'). Faça isso com naturalidade e apenas uma vez.",
+          "4. FECHAMENTO COM PIX COPIA E COLA: Quando o cliente fechar o pedido, confirme o valor total. Se você souber o valor exato, inclua na mesma resposta o marcador [PIX_COPIA_E_COLA: valor] (exemplo: [PIX_COPIA_E_COLA: 120.00]). O sistema gerará e enviará automaticamente o código oficial do PIX Copia e Cola para o cliente pagar em 1 toque no app do banco.",
+          "5. COMPROVANTE: Ao passar os dados de pagamento, lembre o cliente de enviar a foto do comprovante aqui para validação instantânea.",
+        ]),
 
     c.segmento ? `Segmento da empresa: ${c.segmento}.` : "",
     c.sobre_empresa ? `Sobre a empresa:\n${c.sobre_empresa}` : "",
@@ -290,8 +300,8 @@ Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma
         `Sempre confirme nome e o melhor horário antes de fechar o agendamento.`
       : "",
     c.telefone_transferencia
-      ? `Se o cliente pedir atendimento humano, reclamar de algo sensível, ou precisar de algo fora do seu escopo, oriente a falar com ${c.telefone_transferencia} e diga que vai transferir.`
-      : "Se o cliente pedir atendimento humano ou for algo sensível, diga educadamente que vai chamar alguém do time.",
+      ? `TRANSBORDO HUMANO: Se o cliente pedir atendimento humano, reclamar de algo delicado ou solicitar algo fora do escopo, avise educadamente que está transferindo. Em seguida, inclua o marcador [ENCAMINHAR_HUMANO: motivo] na resposta. O sistema encaminhará automaticamente um resumo executivo da conversa para ${c.telefone_transferencia}.`
+      : "TRANSBORDO HUMANO: Se o cliente pedir atendimento humano ou for algo sensível, diga educadamente que vai chamar alguém do time e inclua [ENCAMINHAR_HUMANO: motivo].",
     opts?.resumoContato ? `Contexto do contato: ${opts.resumoContato}` : "",
     opts?.estagioAtual ? `Estágio atual no CRM: ${opts.estagioAtual}.` : "",
     `MÉTODO DE ATENDIMENTO (siga sempre):
@@ -356,11 +366,25 @@ export interface AgendarBrief { inicio: string; fim: string; titulo: string; }
 export function parseAiOutput(
   raw: string,
   stages?: StageBrief[],
-): { parts: string[]; stage: string | null; agendar: AgendarBrief | null; fotoUrl: string | null; pixValor: number | null } {
+): {
+  parts: string[];
+  stage: string | null;
+  agendar: AgendarBrief | null;
+  fotoUrl: string | null;
+  pixValor: number | null;
+  encaminharHumano: string | null;
+} {
   let text = raw || "";
   let stage: string | null = null;
   let agendar: AgendarBrief | null = null;
   let fotoUrl: string | null = null;
+  let encaminharHumano: string | null = null;
+
+  const handoverMatch = text.match(/\[\s*(?:ENCAMINHAR_HUMANO|TRANSBORDO|TRANSFERIR_HUMANO)\s*:\s*([^\]]+)\]/i);
+  if (handoverMatch) {
+    encaminharHumano = handoverMatch[1].trim();
+    text = text.replace(handoverMatch[0], "").trim();
+  }
 
   const fotoMatch = text.match(/\[\s*(?:ENVIAR_FOTO|FOTO)\s*:\s*([^\]]+)\]/i);
   if (fotoMatch) {
@@ -410,7 +434,7 @@ export function parseAiOutput(
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
     .slice(0, 3);
-  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor };
+  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano };
 }
 
 export function classifyStagePromptInstruction(): string {
