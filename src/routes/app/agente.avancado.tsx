@@ -108,7 +108,7 @@ function applyPreset(p: PersonalidadePreset, cfg: any, setCfg: (fn: any) => void
 }
 
 
-interface Produto { id: string; nome: string; preco: number; descricao: string | null; ativo: boolean; ordem: number; }
+interface Produto { id: string; nome: string; preco: number; descricao: string | null; ativo: boolean; ordem: number; imagem_url?: string | null; }
 
 function AgentePage() {
   const ctx = Route.useRouteContext();
@@ -136,7 +136,30 @@ function AgentePage() {
       supabase.from("produto").select("*").eq("company_id", companyId).order("ordem", { ascending: true }),
       supabase.from("google_integration").select("company_id,email,conectado,calendar_id,expiry,updated_at").eq("company_id", companyId).maybeSingle(),
     ]);
-    if (c) setCfg({ ...DEFAULTS, ...c });
+    if (c) {
+      const formatField = (val: any) => {
+        if (!val) return "";
+        if (typeof val === "string") return val;
+        if (Array.isArray(val)) {
+          return val
+            .map((item: any) => {
+              if (typeof item === "string") return item;
+              if (item.objecao && item.resposta) return `• ${item.objecao}: ${item.resposta}`;
+              if (item.pergunta && item.resposta) return `• P: ${item.pergunta}\n  R: ${item.resposta}`;
+              return JSON.stringify(item);
+            })
+            .join("\n\n");
+        }
+        return typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
+      };
+      setCfg({
+        ...DEFAULTS,
+        ...c,
+        objecoes: formatField(c.objecoes),
+        faq: formatField(c.faq),
+        politicas: formatField(c.politicas),
+      });
+    }
     setProdutos((p ?? []) as Produto[]);
     setGoogle(g);
     setLoading(false);
@@ -177,7 +200,7 @@ function AgentePage() {
   }
   async function updProduto(id: string, patch: Partial<Produto>) {
     setProdutos((ps) => ps.map((p) => p.id === id ? { ...p, ...patch } : p));
-    await supabase.from("produto").update(patch).eq("id", id);
+    await (supabase.from("produto") as any).update(patch).eq("id", id);
   }
   async function delProduto(id: string) {
     await supabase.from("produto").delete().eq("id", id);
@@ -199,7 +222,7 @@ function AgentePage() {
 
   const promptPreview = buildSystemPrompt(cfg, {
     responderEmPartes: cfg.responder_em_partes,
-    produtos: produtos.filter((p) => p.ativo).map((p) => ({ nome: p.nome, preco: p.preco, descricao: p.descricao })),
+    produtos: produtos.filter((p) => p.ativo).map((p) => ({ nome: p.nome, preco: p.preco, descricao: p.descricao, imagem_url: p.imagem_url })),
   });
 
   return (
@@ -320,11 +343,12 @@ function AgentePage() {
                   {produtos.length === 0 && <div className="text-sm text-muted-foreground py-4 text-center">Nenhum produto cadastrado.</div>}
                   {produtos.map((p) => (
                     <div key={p.id} className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3 grid sm:grid-cols-[1fr_120px_auto_auto] gap-2 items-center">
-                      <Input value={p.nome} onChange={(e) => updProduto(p.id, { nome: e.target.value })} placeholder="Nome" />
-                      <Input type="number" value={p.preco} onChange={(e) => updProduto(p.id, { preco: Number(e.target.value) || 0 })} placeholder="Preço" />
+                      <Input value={p.nome} onChange={(e) => updProduto(p.id, { nome: e.target.value })} placeholder="Nome do produto ou serviço" />
+                      <Input type="number" value={p.preco} onChange={(e) => updProduto(p.id, { preco: Number(e.target.value) || 0 })} placeholder="Preço (R$)" />
                       <Switch checked={p.ativo} onCheckedChange={(v) => updProduto(p.id, { ativo: v })} />
                       <button onClick={() => delProduto(p.id)} className="text-muted-foreground hover:text-destructive p-1"><Trash2 className="size-4" /></button>
-                      <Textarea className="sm:col-span-4" rows={2} value={p.descricao ?? ""} onChange={(e) => updProduto(p.id, { descricao: e.target.value })} placeholder="Descrição" />
+                      <Input className="sm:col-span-4" value={p.imagem_url ?? ""} onChange={(e) => updProduto(p.id, { imagem_url: e.target.value })} placeholder="URL da foto/imagem do produto (opcional - a IA enviará no WhatsApp ao apresentar)" />
+                      <Textarea className="sm:col-span-4" rows={2} value={p.descricao ?? ""} onChange={(e) => updProduto(p.id, { descricao: e.target.value })} placeholder="Descrição detalhada e diferenciais" />
                     </div>
                   ))}
                 </div>
@@ -347,6 +371,11 @@ function AgentePage() {
                   <Field label="Formas de pagamento" value={cfg.formas_pagamento} onChange={(v) => up("formas_pagamento", v)} />
                   <Field label="Ticket médio" value={cfg.ticket_medio} onChange={(v) => up("ticket_medio", v)} />
                 </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field label="Chave PIX (Telefone, CNPJ, CPF, Email ou Aleatória)" value={cfg.chave_pix} onChange={(v) => up("chave_pix", v)} />
+                  <Field label="Nome do Titular da Conta / Razão Social" value={cfg.titular_pix} onChange={(v) => up("titular_pix", v)} />
+                </div>
+                <Area label="Instruções de Pagamento / Entrega" value={cfg.instrucoes_pagamento} onChange={(v) => up("instrucoes_pagamento", v)} rows={2} />
               </Section>
             </TabsContent>
 

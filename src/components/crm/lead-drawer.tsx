@@ -9,7 +9,9 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Save, Trash2, Send } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Loader2, Save, Trash2, Send, Sparkles } from "lucide-react";
+import { generateLeadFollowup, sendLeadFollowup } from "@/lib/sales-recovery.functions";
 
 export interface LeadCard {
   id: string; numero: string; nome: string | null;
@@ -69,9 +71,12 @@ export function LeadDrawer({
         </SheetHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="mt-4">
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="dados">Dados</TabsTrigger>
             <TabsTrigger value="conversa">Conversa</TabsTrigger>
+            <TabsTrigger value="followup" className="text-amber-500 font-medium flex items-center gap-1">
+              <Sparkles className="size-3" /> Follow-up
+            </TabsTrigger>
             <TabsTrigger value="notas">Notas</TabsTrigger>
             <TabsTrigger value="hist">Histórico</TabsTrigger>
           </TabsList>
@@ -120,6 +125,10 @@ export function LeadDrawer({
 
           <TabsContent value="conversa" className="mt-4">
             <ConversaTab numero={local.numero} companyId={companyId} />
+          </TabsContent>
+
+          <TabsContent value="followup" className="mt-4">
+            <FollowupTab card={local} stageName={stages.find((s) => s.id === local.stage_id)?.nome} onChanged={onChanged} />
           </TabsContent>
 
           <TabsContent value="notas" className="mt-4">
@@ -233,5 +242,102 @@ function HistTab({ cardId }: { cardId: string }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function FollowupTab({ card, stageName, onChanged }: { card: LeadCard; stageName?: string; onChanged: () => void }) {
+  const [suggestion, setSuggestion] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [sending, setSending] = useState(false);
+  const gen = useServerFn(generateLeadFollowup);
+  const snd = useServerFn(sendLeadFollowup);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const res = await gen({
+        data: {
+          numero: card.numero,
+          cardId: card.id,
+          contactName: card.nome ?? undefined,
+          stageName,
+        },
+      });
+      setSuggestion(res.suggestion || "");
+      toast.success("Mensagem de follow-up gerada com IA!");
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao gerar follow-up com IA");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleSend() {
+    if (!suggestion.trim()) return toast.error("Escreva ou gere uma mensagem antes de enviar.");
+    setSending(true);
+    try {
+      await snd({
+        data: {
+          numero: card.numero,
+          text: suggestion.trim(),
+          cardId: card.id,
+        },
+      });
+      toast.success("Follow-up enviado pelo WhatsApp com sucesso!");
+      onChanged();
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao enviar follow-up");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 py-2">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3.5 space-y-2">
+        <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-semibold text-xs">
+          <Sparkles className="size-4" /> Reativação Inteligente de Vendas
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          A IA analisa todo o histórico de conversas com este contato, identifica o que foi ofertado (ou se ficou pendente o PIX/pagamento) e cria uma mensagem persuasiva e humana para reatar a venda.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-semibold">Mensagem de Follow-up (Editável)</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleGenerate}
+            disabled={generating}
+            className="h-7 text-xs border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
+          >
+            {generating ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Sparkles className="size-3.5 mr-1.5" />}
+            {suggestion ? "Regerar com IA" : "Gerar com IA"}
+          </Button>
+        </div>
+
+        <Textarea
+          value={suggestion}
+          onChange={(e) => setSuggestion(e.target.value)}
+          rows={4}
+          placeholder="Clique em 'Gerar com IA' ou digite uma mensagem personalizada de reativação para este cliente..."
+          className="text-xs leading-relaxed"
+        />
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSend}
+          disabled={sending || !suggestion.trim()}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9"
+        >
+          {sending ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Send className="size-3.5 mr-1.5" />}
+          Enviar no WhatsApp Agora
+        </Button>
+      </div>
+    </div>
   );
 }

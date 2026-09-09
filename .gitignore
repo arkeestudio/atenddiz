@@ -6,7 +6,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
 node_modules
 dist
 dist-ssr
@@ -15,23 +14,18 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
-
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
-
 # Environment variables / secrets — NUNCA commitar (contêm chaves da Evolution, Google, Supabase)
 .env
 .env.*
 !.env.example
-
 # Schema concatenado gerado localmente (a fonte de verdade é supabase/migrations/)
 dev-schema.sql
-
 # Settings locais do Claude Code (allowlist pode conter paths/chaves de teste)
 .claude/settings.json
 .claude/settings.local.json
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -42,3 +36,27 @@ dev-schema.sql
 *.njsproj
 *.sln
 *.sw?
+
+# managed
+**.data.json
+**.node-persist**
+**_IGNORE_**
+# end managed
+
+# Dumps de banco locais (fonte de verdade: supabase/migrations/)
+/*.sql
+!supabase/migrations/*.sql
+bin/
+
+# Scripts de teste, scratch e diagnósticos locais
+test_*.js
+test_*.mjs
+check_*.mjs
+fix_*.mjs
+cleanup_*.mjs
+import_*.js
+build_clean_dump.js
+verify_dump.js
+trigger_sync.mjs
+openwa_server.mjs
+open-wa-session.*.json

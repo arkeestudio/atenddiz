@@ -101,6 +101,66 @@ export async function geminiTranscribeAudio(base64: string, mimetype?: string): 
   return "";
 }
 
+export interface ReceiptAnalysis {
+  e_comprovante: boolean;
+  tipo?: "pix" | "ted" | "doc" | "boleto" | "cartao" | "outro";
+  valor?: number | null;
+  data?: string | null;
+  pagador?: string | null;
+  destinatario?: string | null;
+  banco?: string | null;
+  autenticacao?: string | null;
+  resumo?: string | null;
+}
+
+export async function geminiAnalyzeReceipt(base64: string, mimetype?: string): Promise<ReceiptAnalysis | null> {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key || !base64) return null;
+  const mime = (mimetype || "image/jpeg").split(";")[0].trim() || "image/jpeg";
+  const prompt = `Você é um auditor financeiro especialista em conferência de comprovantes bancários (PIX, TED, Boleto).
+Analise com extrema precisão esta imagem para verificar se é um comprovante real de pagamento ou transferência bancária.
+Responda ESTRITAMENTE em formato JSON (sem blocos markdown adicionais e sem texto explicativo):
+{
+  "e_comprovante": true,
+  "tipo": "pix",
+  "valor": 150.00,
+  "data": "2026-09-07",
+  "pagador": "Nome do Pagador",
+  "destinatario": "Nome de quem recebeu",
+  "banco": "Nome do Banco",
+  "autenticacao": "Código de autenticação/transação",
+  "resumo": "Comprovante PIX de R$ 150,00 pago em 07/09/2026"
+}
+Se NÃO for comprovante bancário de pagamento, retorne {"e_comprovante": false, "resumo": "Não é um comprovante de pagamento"}.`;
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mime, data: base64 } },
+        ],
+      },
+    ],
+  };
+
+  const attempts = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const res = await geminiFetch(key, attempts[i], body);
+      if (res.ok) {
+        const raw = geminiText(await res.json());
+        const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+        const parsed = JSON.parse(cleaned);
+        return parsed as ReceiptAnalysis;
+      }
+    } catch (e: any) {
+      console.warn("[gemini.receipt]", e?.message);
+    }
+  }
+  return null;
+}
+
 async function openAiChat(key: string, model: string, messages: ChatMsg[]): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

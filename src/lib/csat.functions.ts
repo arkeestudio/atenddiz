@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { getRequest } from "@tanstack/react-start/server";
 
 async function resolveCompanyId(supabase: any, userId: string): Promise<string> {
   const { data } = await supabase.from("company_user").select("company_id").eq("user_id", userId).eq("ativo", true).order("created_at", { ascending: true }).limit(1).maybeSingle();
@@ -8,8 +7,9 @@ async function resolveCompanyId(supabase: any, userId: string): Promise<string> 
   return data.company_id as string;
 }
 
-function appOrigin(): string {
-  try { const u = new URL(getRequest().url); return `${u.protocol}//${u.host}`; } catch { return ""; }
+async function appOrigin(): Promise<string> {
+  const { getRequestOrigin } = await import("@/lib/request-utils.server");
+  return getRequestOrigin();
 }
 
 export const sendCsat = createServerFn({ method: "POST" })
@@ -30,11 +30,12 @@ export const sendCsat = createServerFn({ method: "POST" })
 
     const { data: inst } = await supabase.from("whatsapp_instances").select("instance_name,status").eq("company_id", companyId).maybeSingle();
     if (inst && (inst.status === "open" || inst.status === "connected")) {
-      const link = `${appOrigin()}/csat/${row.token}`;
+      const link = `${await appOrigin()}/csat/${row.token}`;
       const texto = `Olá! Como foi nosso atendimento? Avalie em 1 minuto: ${link}`;
       try {
-        const { evoSendText } = await import("./evolution.server");
-        await evoSendText(inst.instance_name, numero, texto);
+        const { getWhatsAppProvider } = await import("./whatsapp-provider");
+        const provider = getWhatsAppProvider();
+        await provider.sendText(companyId, inst.instance_name, numero, texto);
         await supabase.from("mensagens").insert({
           company_id: companyId, user_id: userId, numero, contato_nome: data.contatoNome ?? null,
           direcao: "saida", autor: "sistema", texto,

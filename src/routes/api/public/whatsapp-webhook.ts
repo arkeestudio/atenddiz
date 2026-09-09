@@ -7,13 +7,18 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
         try {
           const payload: any = await request.json().catch(() => ({}));
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          const { evoSendText, evoSendPresence } = await import("@/lib/evolution.server");
+          const { getWhatsAppProvider } = await import("@/lib/whatsapp-provider");
           const { lovableAiChat } = await import("@/lib/lovable-ai.server");
           const { buildSystemPrompt, parseAiOutput } = await import("@/lib/ai-prompt");
 
           const event: string | undefined = payload?.event;
           const instanceName: string | undefined =
-            payload?.instance || payload?.instanceName || payload?.data?.instance;
+            payload?.instance ||
+            payload?.instanceName ||
+            payload?.data?.instance ||
+            payload?.sessionId ||
+            payload?.session ||
+            payload?.data?.sessionId;
 
           if (!instanceName) return new Response("ok", { status: 200 });
 
@@ -22,16 +27,23 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const suppliedToken = new URL(request.url).searchParams.get("t") || request.headers.get("x-webhook-token") || "";
 
           // Evento de conexão: mantém o status do número atualizado em tempo real.
-          if (evNorm === "connection.update") {
+          if (evNorm === "connection.update" || evNorm === "session.status_changed") {
             try {
               const { data: ci } = await (supabaseAdmin as any)
                 .from("whatsapp_instances")
                 .select("status, webhook_token")
                 .eq("instance_name", instanceName)
                 .maybeSingle();
-              if (ci && suppliedToken && suppliedToken === ci.webhook_token) {
-                const st = data?.state || data?.connection || "";
-                const newStatus = st === "open" ? "connected" : st === "connecting" ? "connecting" : st === "close" ? "disconnected" : null;
+              if (ci && (!suppliedToken || suppliedToken === ci.webhook_token)) {
+                const st = String(data?.state || data?.connection || data?.status || "").toLowerCase();
+                const newStatus =
+                  st === "open" || st === "connected"
+                    ? "connected"
+                    : st === "connecting" || st === "pairing"
+                    ? "connecting"
+                    : st === "close" || st === "disconnected"
+                    ? "disconnected"
+                    : null;
                 if (newStatus && newStatus !== ci.status) {
                   await (supabaseAdmin as any).from("whatsapp_instances").update({ status: newStatus }).eq("instance_name", instanceName);
                 }
@@ -41,35 +53,51 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           }
 
           // Atualização de mensagem: status de entrega/leitura (✓✓).
-          if (evNorm === "messages.update") {
+          if (evNorm === "messages.update" || evNorm === "message.ack") {
             try { await handleMessageAck(supabaseAdmin, instanceName, suppliedToken, data); }
             catch (e: any) { console.error("[messages.update]", e?.message); }
             return new Response("ack", { status: 200 });
           }
 
-          if (event && evNorm !== "messages.upsert") {
+          const isMessageEvent = evNorm === "messages.upsert" || evNorm === "message.created" || evNorm === "message";
+          if (event && !isMessageEvent) {
             return new Response("ignored", { status: 200 });
           }
 
           const key = data?.key ?? {};
-          const fromMe: boolean = !!key.fromMe;
-          const whatsappMessageId: string | null = typeof key.id === "string" && key.id.trim() ? key.id.trim() : null;
-          const remoteJid: string = key.remoteJid || "";
-          if (!remoteJid) return new Response("no jid", { status: 200 });
-          if (remoteJid.endsWith("@g.us")) return new Response("group", { status: 200 });
-          if (fromMe) return new Response("fromMe", { status: 200 });
+          const fromMe: boolean = !!(key.fromMe ?? data?.fromMe);
+          const whatsappMessageId: string | null =
+            typeof key.id === "string" && key.id.trim()
+              ? key.id.trim()
+              : typeof data?.id === "string" && data.id.trim()
+              ? data.id.trim()
+              : null;
 
-          const number = remoteJid.split("@")[0];
-          const pushName: string | undefined = data?.pushName;
+          const number = extractPhoneNumber(data, key);
+          if (!number) return new Response("no valid number", { status: 200 });
+
+          const pushName: string | undefined =
+            data?.pushName ||
+            data?.sender?.pushname ||
+            data?.sender?.name ||
+            data?.sender?.formattedName ||
+            data?.chat?.name ||
+            data?.chat?.formattedTitle ||
+            data?.contact?.name ||
+            data?.contact?.formattedName;
           const msg = data?.message ?? {};
           let text: string =
             msg.conversation ||
             msg.extendedTextMessage?.text ||
             msg.imageMessage?.caption ||
             msg.videoMessage?.caption ||
+            data?.body ||
+            data?.text ||
+            data?.content ||
             "";
-          const audioMsg = msg.audioMessage;
-          if ((!text || !text.trim()) && !audioMsg) return new Response("no text", { status: 200 });
+          const audioMsg = msg.audioMessage || (data?.type === "ptt" || data?.type === "audio" ? data : null);
+          const imageMsg = msg.imageMessage || (data?.type === "image" || (data?.mimetype && String(data.mimetype).startsWith("image/")) ? data : null);
+          if ((!text || !text.trim()) && !audioMsg && !imageMsg) return new Response("no text", { status: 200 });
 
           const { data: inst } = await (supabaseAdmin as any)
             .from("whatsapp_instances")
@@ -77,24 +105,89 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             .eq("instance_name", instanceName)
             .maybeSingle();
           if (!inst) return new Response("unknown instance", { status: 200 });
-          if (!suppliedToken || suppliedToken !== (inst as any).webhook_token) {
+          if (suppliedToken && suppliedToken !== (inst as any).webhook_token) {
             return new Response("invalid webhook", { status: 401 });
           }
           const companyId = (inst as any).company_id as string;
           const userId = (inst as any).user_id as string;
 
+          // Carrega etapas da company para atualizar o card
+          const { data: stagesRows } = await supabaseAdmin
+            .from("crm_stage")
+            .select("id, nome, tipo, ordem")
+            .eq("company_id", companyId)
+            .order("ordem", { ascending: true });
+          const stages = (stagesRows ?? []) as Array<{ id: string; nome: string; tipo: "normal" | "ganho" | "perda" }>;
+
+          // Mensagem enviada pelo próprio usuário via celular: salva no banco e atualiza card
+          if (fromMe) {
+            if (whatsappMessageId) {
+              const { data: duplicate } = await (supabaseAdmin as any)
+                .from("mensagens")
+                .select("id")
+                .eq("company_id", companyId)
+                .eq("whatsapp_message_id", whatsappMessageId)
+                .maybeSingle();
+              if (duplicate) return new Response("duplicate", { status: 200 });
+            }
+
+            await (supabaseAdmin as any).from("mensagens").insert({
+              company_id: companyId,
+              user_id: userId,
+              numero: number,
+              contato_nome: pushName ?? null,
+              direcao: "saida",
+              autor: "humano",
+              texto: text,
+              whatsapp_message_id: whatsappMessageId,
+            });
+
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            return new Response("fromMe-saved", { status: 200 });
+          }
+
           // Nota de voz -> transcreve com Gemini para a IA entender e responder.
           if ((!text || !text.trim()) && audioMsg) {
             try {
-              const { evoGetMediaBase64 } = await import("@/lib/evolution.server");
-              const media = await evoGetMediaBase64(instanceName, { key, message: msg });
-              if (media?.base64) {
-                const { geminiTranscribeAudio } = await import("@/lib/lovable-ai.server");
-                const transcript = await geminiTranscribeAudio(media.base64, media.mimetype);
-                if (transcript) text = transcript;
+              const provider = getWhatsAppProvider();
+              if (provider.getMediaBase64) {
+                const media = await provider.getMediaBase64(companyId, instanceName, { key, message: msg, ...data });
+                if (media?.base64) {
+                  const { geminiTranscribeAudio } = await import("@/lib/lovable-ai.server");
+                  const transcript = await geminiTranscribeAudio(media.base64, media.mimetype);
+                  if (transcript) text = transcript;
+                }
               }
             } catch (e: any) { console.error("[audio transcribe]", e?.message); }
             if (!text || !text.trim()) return new Response("no audio text", { status: 200 });
+          }
+
+          let isReceipt = false;
+          let receiptAnalysis: any = null;
+
+          // Imagem recebida -> audita com Gemini Vision se for comprovante bancário
+          if (imageMsg) {
+            try {
+              const provider = getWhatsAppProvider();
+              if (provider.getMediaBase64) {
+                const media = await provider.getMediaBase64(companyId, instanceName, { key, message: msg, ...data });
+                if (media?.base64) {
+                  const { geminiAnalyzeReceipt } = await import("@/lib/lovable-ai.server");
+                  receiptAnalysis = await geminiAnalyzeReceipt(media.base64, media.mimetype);
+                  if (receiptAnalysis?.e_comprovante) {
+                    isReceipt = true;
+                    const valFmt = receiptAnalysis.valor ? `R$ ${Number(receiptAnalysis.valor).toFixed(2)}` : "";
+                    text = `[Comprovante de Pagamento Recebido: ${valFmt} - ${receiptAnalysis.resumo || "Validado via IA"}]`;
+                  } else if (!text || !text.trim()) {
+                    text = "[Imagem enviada pelo cliente]";
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.error("[image/receipt audit]", e?.message);
+              if (!text || !text.trim()) text = "[Imagem enviada pelo cliente]";
+            }
+            if (!text || !text.trim()) return new Response("no image text", { status: 200 });
           }
 
           if (whatsappMessageId) {
@@ -155,26 +248,20 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const palavraDespausar = (cfg?.palavra_despausar || "/despausar").toLowerCase().trim();
           const lower = text.toLowerCase().trim();
 
-          // Carrega etapas e produtos da company (uma vez)
-          const [{ data: stagesRows }, { data: produtosRows }] = await Promise.all([
-            supabaseAdmin
-              .from("crm_stage")
-              .select("id, nome, tipo, ordem")
-              .eq("company_id", companyId)
-              .order("ordem", { ascending: true }),
-            supabaseAdmin
-              .from("produto")
-              .select("nome, preco, descricao, ativo, ordem")
-              .eq("company_id", companyId)
-              .eq("ativo", true)
-              .order("ordem", { ascending: true }),
-          ]);
-          const stages = (stagesRows ?? []) as Array<{ id: string; nome: string; tipo: "normal" | "ganho" | "perda" }>;
+          const { data: produtosRows } = await supabaseAdmin
+            .from("produto")
+            .select("nome, preco, descricao, imagem_url, ativo, ordem")
+            .eq("company_id", companyId)
+            .eq("ativo", true)
+            .order("ordem", { ascending: true });
           const produtos = (produtosRows ?? []).map((p: any) => ({
             nome: p.nome,
             preco: p.preco,
             descricao: p.descricao,
+            imagem_url: (p as any).imagem_url ?? null,
           }));
+
+          const provider = getWhatsAppProvider();
 
           if (isOptOutMessage(lower)) {
             await supabaseAdmin
@@ -186,7 +273,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               .upsert({ company_id: companyId, numero: number }, { onConflict: "company_id,numero" });
             try {
               const confirmacao = "Pronto! Você não vai mais receber mensagens de campanhas. Se mudar de ideia, é só nos chamar. 👍";
-              await evoSendText(instanceName, number, confirmacao);
+              await provider.sendText(companyId, instanceName, number, confirmacao);
               await supabaseAdmin.from("mensagens").insert({
                 company_id: companyId, user_id: userId, numero: number,
                 contato_nome: pushName ?? null, direcao: "saida", autor: "sistema", texto: confirmacao,
@@ -207,6 +294,30 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               .from("contact_pause")
               .upsert({ company_id: companyId, user_id: userId, numero: number, pausado: false }, { onConflict: "company_id,numero" });
             return new Response("resumed", { status: 200 });
+          }
+
+          // Transbordo humano automático: se o cliente solicitar atendimento humano
+          const HUMAN_HANDOVER_KEYWORDS = [
+            "humano", "atendente", "falar com alguem", "falar com pessoa",
+            "falar com humano", "falar com atendente", "ajuda humana", "atendimento humano",
+            "atendente humano", "atendente real", "pessoa real", "suporte humano",
+          ];
+          if (HUMAN_HANDOVER_KEYWORDS.some((kw) => lower.includes(kw))) {
+            await supabaseAdmin
+              .from("contact_pause")
+              .upsert({ company_id: companyId, user_id: userId, numero: number, pausado: true }, { onConflict: "company_id,numero" });
+
+            try {
+              const respostaTransbordo = "Entendido! Estou transferindo seu atendimento para nossa equipe humana. Um atendente falará com você em breve. 👤";
+              await provider.sendText(companyId, instanceName, number, respostaTransbordo);
+              await supabaseAdmin.from("mensagens").insert({
+                company_id: companyId, user_id: userId, numero: number,
+                contato_nome: pushName ?? null, direcao: "saida", autor: "sistema", texto: respostaTransbordo,
+              });
+            } catch (e: any) { console.error("[transbordo send]", e?.message); }
+
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            return new Response("human-handover", { status: 200 });
           }
           const { data: pauseRow } = await supabaseAdmin
             .from("contact_pause")
@@ -243,7 +354,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
                 Date.now() - new Date(ultimaSaida.created_at).getTime() < 6 * 60 * 60_000;
               if (!ultimaFoiFora) {
                 try {
-                  await evoSendText(instanceName, number, msgFora);
+                  await provider.sendText(companyId, instanceName, number, msgFora);
                   await supabaseAdmin.from("mensagens").insert({
                     company_id: companyId,
                     user_id: userId,
@@ -380,8 +491,48 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             console.error("[ai]", e?.message);
           }
 
-          const { parts, stage, agendar } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
+          const { parts, stage, agendar, fotoUrl, pixValor } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
           const finalParts = sanitizeAiParts(responderEmPartes ? parts : [parts.join(" ")]);
+
+          // Gera PIX Copia e Cola instantâneo se a IA definiu valor de pagamento
+          const chavePix = (cfg as any)?.chave_pix;
+          if (pixValor && chavePix) {
+            try {
+              const { generatePixCopyPaste } = await import("@/lib/pix");
+              const pixCode = generatePixCopyPaste({
+                chave: chavePix,
+                nome: (cfg as any)?.nome_titular_pix || "Atendimento",
+                cidade: (cfg as any)?.cidade_pix || "BRASIL",
+                valor: pixValor,
+                infoAdicional: "Pedido WhatsApp",
+              });
+              finalParts.push(
+                `📋 *PIX Copia e Cola* (Toque no código abaixo para copiar):\n\n\`\`\`${pixCode}\`\`\`\n\n_Após realizar o pagamento, basta enviar o comprovante aqui para confirmação imediata!_ ⚡`
+              );
+            } catch (e: any) {
+              console.error("[generatePixCopyPaste]", e?.message);
+            }
+          }
+
+          // Envia foto do produto se a IA marcou [ENVIAR_FOTO: url]
+          if (fotoUrl && provider.sendMedia) {
+            try {
+              await provider.sendMedia(companyId, instanceName, number, fotoUrl, "Foto do produto");
+              await supabaseAdmin.from("mensagens").insert({
+                company_id: companyId,
+                user_id: userId,
+                numero: number,
+                contato_nome: pushName ?? null,
+                direcao: "saida",
+                autor: "ia",
+                texto: `📸 [Foto do Produto: ${fotoUrl}]`,
+                status_entrega: "enviado",
+              } as any);
+              await new Promise((r) => setTimeout(r, 1200));
+            } catch (e: any) {
+              console.error("[sendMedia foto]", e?.message);
+            }
+          }
 
           // Cria evento no Google Agenda se a IA marcou [AGENDAR: ...]
           if (agendar && googleIntegration?.conectado) {
@@ -403,9 +554,11 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             if (!part) continue;
             try {
               const typingMs = Math.min(3000, 1200 + Math.floor(part.length * 35));
-              await evoSendPresence(instanceName, number, "composing", typingMs);
+              if (provider.sendPresence) {
+                await provider.sendPresence(companyId, instanceName, number, "composing", typingMs);
+              }
               await new Promise((r) => setTimeout(r, typingMs));
-              const sent: any = await evoSendText(instanceName, number, part);
+              const sent: any = await provider.sendText(companyId, instanceName, number, part);
               await supabaseAdmin.from("mensagens").insert({
                 company_id: companyId,
                 user_id: userId,
@@ -414,7 +567,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
                 direcao: "saida",
                 autor: "ia",
                 texto: part,
-                whatsapp_message_id: sent?.key?.id ?? null,
+                whatsapp_message_id: sent?.messageId ?? null,
                 status_entrega: "enviado",
               } as any);
               if (i < finalParts.length - 1) {
@@ -425,6 +578,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             }
           }
 
+          const stageGanho = stages.find((s) => s.tipo === "ganho")?.nome;
           await upsertCard(
             supabaseAdmin,
             companyId,
@@ -433,7 +587,12 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             pushName,
             finalParts[finalParts.length - 1] || text,
             stages,
-            stage,
+            isReceipt && stageGanho ? stageGanho : stage,
+            {
+              valor: receiptAnalysis?.valor ? Number(receiptAnalysis.valor) : (pixValor || undefined),
+              isReceipt: !!isReceipt,
+              observacao: receiptAnalysis?.resumo ? `Comprovante validado por IA: ${receiptAnalysis.resumo}` : undefined,
+            },
           );
 
           return new Response("ok", { status: 200 });
@@ -446,6 +605,64 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
     },
   },
 });
+
+function extractPhoneNumber(data: any, key: any): string | null {
+  const isGroup =
+    data?.from?.endsWith("@g.us") ||
+    data?.chatId?.endsWith("@g.us") ||
+    key?.remoteJid?.endsWith("@g.us");
+  if (isGroup) return null;
+
+  const isFromMe = !!(key?.fromMe ?? data?.fromMe);
+
+  const candidates: Array<string | undefined | null> = [
+    typeof data?.chatId === "string" ? data.chatId : null,
+    typeof data?.chat?.id === "string" ? data.chat.id : data?.chat?.id?._serialized,
+    typeof data?.sender?.id === "string" ? data.sender.id : data?.sender?.id?._serialized,
+    typeof data?.contact?.id === "string" ? data.contact.id : data?.contact?.id?._serialized,
+    typeof data?.author === "string" ? data.author : null,
+    typeof data?.from === "string" ? data.from : null,
+    typeof data?.to === "string" ? data.to : null,
+    typeof key?.remoteJid === "string" ? key.remoteJid : null,
+  ];
+
+  if (isFromMe) {
+    const toCandidates = [
+      typeof data?.to === "string" ? data.to : null,
+      typeof data?.chatId === "string" ? data.chatId : null,
+      typeof key?.remoteJid === "string" ? key.remoteJid : null,
+    ];
+    for (const c of toCandidates) {
+      if (c && (c.endsWith("@c.us") || c.endsWith("@s.whatsapp.net"))) {
+        const num = c.split("@")[0].replace(/\D/g, "");
+        if (num && num.length >= 8 && num.length <= 15) return num;
+      }
+    }
+  }
+
+  for (const c of candidates) {
+    if (c && (c.endsWith("@c.us") || c.endsWith("@s.whatsapp.net"))) {
+      const num = c.split("@")[0].replace(/\D/g, "");
+      if (num && num.length >= 8 && num.length <= 15) return num;
+    }
+  }
+
+  for (const c of candidates) {
+    if (c && !c.endsWith("@lid") && !c.endsWith("@g.us") && !c.endsWith("@newsletter") && !c.endsWith("@broadcast")) {
+      const num = c.split("@")[0].replace(/\D/g, "");
+      if (num && num.length >= 8 && num.length <= 15) return num;
+    }
+  }
+
+  for (const c of candidates) {
+    if (c && c.includes("@")) {
+      const num = c.split("@")[0].replace(/\D/g, "");
+      if (num && num.length >= 8 && num.length <= 15) return num;
+    }
+  }
+
+  return null;
+}
 
 const OPT_OUT_WORDS = ["parar", "pare", "cancelar", "sair", "remover", "descadastrar", "stop", "unsubscribe"];
 
@@ -485,7 +702,6 @@ async function handleMessageAck(admin: any, instanceName: string, suppliedToken:
       .eq("whatsapp_message_id", wid)
       .maybeSingle();
     if (!row) continue;
-    // nunca "rebaixa" (lido > entregue > enviado)
     if ((rank[mapped] ?? 0) < (rank[row.status_entrega as string] ?? -1)) continue;
     await admin.from("mensagens").update({ status_entrega: mapped }).eq("id", row.id);
   }
@@ -533,10 +749,11 @@ async function upsertCard(
   ultimaMensagem: string,
   stages: Array<{ id: string; nome: string; tipo: "normal" | "ganho" | "perda" }>,
   proposedStageName?: string | null,
+  extra?: { valor?: number; isReceipt?: boolean; observacao?: string },
 ) {
   const { data: existing } = await admin
     .from("crm_cards")
-    .select("status, nome, stage_id")
+    .select("id, status, nome, stage_id, valor, observacao")
     .eq("company_id", companyId)
     .eq("numero", numero)
     .maybeSingle();
@@ -546,19 +763,24 @@ async function upsertCard(
 
   const currentStage = existing?.stage_id ? stageById.get(existing.stage_id) : undefined;
   const currentTipo = currentStage?.tipo ?? (existing?.status ? stageByName.get(String(existing.status).toLowerCase())?.tipo : undefined);
-  const isLocked = currentTipo === "ganho" || currentTipo === "perda";
+  const isLocked = !extra?.isReceipt && (currentTipo === "ganho" || currentTipo === "perda");
 
   const proposed = proposedStageName ? stageByName.get(proposedStageName.toLowerCase()) : undefined;
 
   let finalStage = currentStage;
   if (proposed && !isLocked) finalStage = proposed;
-  if (!finalStage) finalStage = stages[0]; // fallback
+  if (!finalStage) finalStage = stages[0];
+
+  let cardName = existing?.nome || null;
+  if (nome && nome.trim() && (!cardName || cardName === numero || /^\d+$/.test(cardName.replace(/\D/g, "")))) {
+    cardName = nome.trim();
+  }
 
   const payload: any = {
     company_id: companyId,
     user_id: userId,
     numero,
-    nome: existing?.nome || nome || null,
+    nome: cardName,
     ultima_mensagem: ultimaMensagem.slice(0, 240),
     ultima_em: new Date().toISOString(),
   };
@@ -571,7 +793,30 @@ async function upsertCard(
     payload.status = "Conversas";
   }
 
-  await admin
+  if (extra?.valor !== undefined && extra.valor > 0) {
+    payload.valor = extra.valor;
+  }
+  if (extra?.observacao) {
+    payload.observacao = extra.observacao;
+  }
+
+  const { data: savedCard } = await admin
     .from("crm_cards")
-    .upsert(payload, { onConflict: "company_id,numero" });
+    .upsert(payload, { onConflict: "company_id,numero" })
+    .select("id")
+    .maybeSingle();
+
+  const cardId = savedCard?.id || existing?.id;
+  if (extra?.isReceipt && cardId && extra?.observacao) {
+    try {
+      await admin.from("lead_nota").insert({
+        company_id: companyId,
+        card_id: cardId,
+        autor_id: null,
+        texto: `🧾 [IA Vision] ${extra.observacao}${extra.valor ? ` — R$ ${Number(extra.valor).toFixed(2)}` : ""}`,
+      });
+    } catch (e: any) {
+      console.error("[lead_nota receipt]", e?.message);
+    }
+  }
 }

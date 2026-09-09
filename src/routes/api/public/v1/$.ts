@@ -51,8 +51,9 @@ async function handle(request: Request) {
       if (!inst || (inst.status !== "open" && inst.status !== "connected")) return new Response(JSON.stringify({ error: "WhatsApp não conectado" }), { status: 400 });
       if (!userId) return new Response(JSON.stringify({ error: "Token sem owner; recrie o token." }), { status: 400 });
       try {
-        const { evoSendText } = await import("@/lib/evolution.server");
-        await evoSendText(inst.instance_name, numero, texto);
+        const { getWhatsAppProvider } = await import("@/lib/whatsapp-provider");
+        const provider = getWhatsAppProvider();
+        await provider.sendText(companyId, inst.instance_name, numero, texto);
         await (supabaseAdmin as any).from("mensagens").insert({
           company_id: companyId, user_id: userId, numero, direcao: "saida", autor: "api", texto,
         });

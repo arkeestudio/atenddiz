@@ -2,6 +2,7 @@ export interface ProdutoBrief {
   nome: string;
   preco?: number | string | null;
   descricao?: string | null;
+  imagem_url?: string | null;
 }
 
 export interface StageBrief {
@@ -47,10 +48,16 @@ export interface AgentConfig {
   formas_pagamento?: string;
   ticket_medio?: string;
   faq?: string;
+  base_conhecimento?: string;
   politicas?: string;
   posvenda_msg?: string;
   pedir_avaliacao?: boolean;
   reativar_cliente?: boolean;
+
+  // Vendas e Pagamento (PIX)
+  chave_pix?: string;
+  titular_pix?: string;
+  instrucoes_pagamento?: string;
 
   // Personalidade
   tom?: number;            // 0-100 (sério→caloroso)
@@ -164,6 +171,23 @@ function describeProatividade(p?: number | null): string {
   return "seja MUITO PROATIVO: antecipe necessidades, sugira upsell/cross-sell, conduza ativamente pro fechamento";
 }
 
+function safeText(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") return val.trim();
+  if (Array.isArray(val)) {
+    return val
+      .map((item: any) => {
+        if (typeof item === "string") return item;
+        if (item?.objecao && item?.resposta) return `• ${item.objecao}: ${item.resposta}`;
+        if (item?.pergunta && item?.resposta) return `• P: ${item.pergunta}\n  R: ${item.resposta}`;
+        return JSON.stringify(item);
+      })
+      .join("\n");
+  }
+  if (typeof val === "object") return JSON.stringify(val);
+  return String(val);
+}
+
 function montaPersonalidade(c: Partial<AgentConfig>): string {
   return [
     describePersonalidade(c.personalidade),
@@ -197,28 +221,37 @@ export function buildSystemPrompt(
   const personalidade = montaPersonalidade(c);
 
   const produtosBloco = produtos.length
-    ? "PRODUTOS / SERVIÇOS (catálogo real — use SOMENTE estes preços/itens):\n" +
+    ? "CATÁLOGO DE PRODUTOS / SERVIÇOS (itens reais e preços):\n" +
       produtos
         .map((p) => {
           const preco = p.preco !== undefined && p.preco !== null && p.preco !== "" ? ` — R$ ${p.preco}` : "";
           const desc = p.descricao ? ` (${p.descricao})` : "";
-          return `• ${p.nome}${preco}${desc}`;
+          const foto = p.imagem_url ? ` [FOTO DISPONÍVEL: ${p.imagem_url}]` : "";
+          return `• ${p.nome}${preco}${desc}${foto}`;
         })
-        .join("\n")
+        .join("\n") +
+      "\n\nREGRA DE ENVIO DE FOTO: Se o cliente pedir para ver o produto, pedir fotos ou demonstrar interesse em um item que possui [FOTO DISPONÍVEL: url], inclua exatamente [ENVIAR_FOTO: url] na sua resposta. O sistema enviará a foto automaticamente ao cliente!"
     : "";
 
   const stageNames = stages.map((s) => s.nome).join(" | ");
   const stagesFinaisNomes = stages.filter((s) => s.tipo === "ganho" || s.tipo === "perda").map((s) => s.nome);
 
   const blocos = [
-    `Você é ${c.nome_agente || "um atendente virtual"}, atendendo no WhatsApp da empresa ${c.nome_empresa || "(empresa)"}.`,
+    `Você é ${c.nome_agente || "um consultor de vendas virtual"}, atendendo no WhatsApp da empresa ${c.nome_empresa || "(empresa)"}.`,
     c.apresentacao ? `Como se apresenta na primeira mensagem: ${c.apresentacao}` : "",
-    `Objetivo: ${c.papel_objetivo || "atender clientes com cordialidade, descobrir o que precisam e ajudar a fechar a venda."}`,
+    `Objetivo: ${c.papel_objetivo || "atender clientes com excelência, descobrir suas necessidades, recomendar produtos/serviços e fechar vendas de forma ativa e consultiva."}`,
     describeFoco(c.foco_atendimento),
     `Personalidade: ${personalidade}.`,
     c.evitar_palavras ? `PALAVRAS / EXPRESSÕES PROIBIDAS (nunca use): ${c.evitar_palavras}` : "",
     c.assinar_mensagens ? `Assine a primeira mensagem do dia com "— ${c.nome_agente || "Atendente"}".` : "",
     c.estilo_comunicacao ? `Estilo de comunicação extra: ${c.estilo_comunicacao}` : "",
+
+    "DIRETRIZES DE VENDAS E FECHAMENTO (CONSULTOR ATIVO):",
+    "1. NUNCA finalize uma mensagem de forma passiva como 'fico à disposição' ou 'qualquer dúvida me chame'. Conduza sempre com uma pergunta de fechamento (ex: 'Quer que eu separe essa unidade para você?', 'Posso te enviar a nossa chave PIX para confirmar?').",
+    "2. QUEBRA DE OBJEÇÕES: Se o cliente achar caro ou hesitar, destaque a qualidade, durabilidade e o custo-benefício. Se houver cupom ou oferta ativa, use estrategicamente para fechar na hora.",
+    "3. UPSELL & PRODUTOS COMPLEMENTARES: Quando o cliente escolher um produto/serviço, se houver outros itens no catálogo, sugira amigavelmente UM produto complementar ou combo (ex: 'Muitos clientes também levam o item Y junto. Quer que eu inclua no mesmo pedido?'). Faça isso com naturalidade e apenas uma vez.",
+    "4. FECHAMENTO COM PIX COPIA E COLA: Quando o cliente fechar o pedido, confirme o valor total. Se você souber o valor exato, inclua na mesma resposta o marcador [PIX_COPIA_E_COLA: valor] (exemplo: [PIX_COPIA_E_COLA: 120.00]). O sistema gerará e enviará automaticamente o código oficial do PIX Copia e Cola para o cliente pagar em 1 toque no app do banco.",
+    "5. COMPROVANTE: Ao passar os dados de pagamento, lembre o cliente de enviar a foto do comprovante aqui para validação instantânea.",
 
     c.segmento ? `Segmento da empresa: ${c.segmento}.` : "",
     c.sobre_empresa ? `Sobre a empresa:\n${c.sobre_empresa}` : "",
@@ -231,16 +264,24 @@ export function buildSystemPrompt(
     c.ofertas ? `OFERTAS ATIVAS:\n${c.ofertas}` : "",
     c.cupom ? `Cupom disponível: ${c.cupom} (só ofereça quando fizer sentido pra fechar)` : "",
     c.formas_pagamento ? `Formas de pagamento aceitas: ${c.formas_pagamento}` : "",
+    (c.chave_pix || c.titular_pix || c.instrucoes_pagamento)
+      ? `DADOS OFICIAIS PARA PAGAMENTO VIA PIX / FECHAMENTO:
+${c.chave_pix ? `• Chave PIX: ${c.chave_pix}` : ""}
+${c.titular_pix ? `• Titular / Beneficiário: ${c.titular_pix}` : ""}
+${c.instrucoes_pagamento ? `• Instruções de pagamento / entrega: ${c.instrucoes_pagamento}` : ""}
+Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma linha destacada para que o cliente consiga copiar com facilidade no WhatsApp. Solicite o envio do comprovante para separação do pedido.`
+      : "",
     c.ticket_medio ? `Ticket médio de referência: ${c.ticket_medio}` : "",
-    c.como_vender ? `COMO VENDER (passo a passo de vendas da empresa):\n${c.como_vender}` : "",
-    c.objecoes ? `OBJEÇÕES COMUNS E COMO RESPONDER:\n${c.objecoes}` : "",
-    c.faq ? `FAQ:\n${c.faq}` : "",
-    c.politicas ? `POLÍTICAS (troca/cancelamento/garantia):\n${c.politicas}` : "",
+    safeText(c.como_vender) ? `COMO VENDER (passo a passo de vendas da empresa):\n${safeText(c.como_vender)}` : "",
+    safeText(c.objecoes) ? `OBJEÇÕES COMUNS E COMO RESPONDER:\n${safeText(c.objecoes)}` : "",
+    safeText(c.faq) ? `FAQ:\n${safeText(c.faq)}` : "",
+    safeText(c.base_conhecimento) ? `BASE DE CONHECIMENTO / REGRAS DE NEGÓCIO:\n${safeText(c.base_conhecimento)}` : "",
+    safeText(c.politicas) ? `POLÍTICAS (troca/cancelamento/garantia):\n${safeText(c.politicas)}` : "",
     c.posvenda_msg ? `Mensagem padrão de pós-venda: ${c.posvenda_msg}` : "",
     c.pedir_avaliacao ? "Quando uma venda for concluída, peça uma avaliação de forma natural." : "",
     c.reativar_cliente ? "Pode reativar clientes inativos com mensagens leves e relevantes." : "",
-    c.pode_fazer ? `O QUE VOCÊ PODE FAZER:\n${c.pode_fazer}` : "",
-    c.nao_pode_fazer ? `O QUE VOCÊ NÃO PODE FAZER:\n${c.nao_pode_fazer}` : "",
+    safeText(c.pode_fazer) ? `O QUE VOCÊ PODE FAZER:\n${safeText(c.pode_fazer)}` : "",
+    safeText(c.nao_pode_fazer) ? `O QUE VOCÊ NÃO PODE FAZER:\n${safeText(c.nao_pode_fazer)}` : "",
     c.agendamento_ativo
       ? `AGENDAMENTO ATIVO: você pode propor horários para ${c.servicos_agendaveis || "os serviços agendáveis"}. ` +
         `Duração padrão: ${c.duracao_padrao || "30 min"}. ` +
@@ -298,9 +339,11 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
   blocos.push(
     `AO FINAL DA RESPOSTA, em uma nova linha, escreva exatamente:
 [ESTAGIO: ${stageNames}]
-Escolha 1 entre as etapas reais do CRM da empresa listadas acima. ` +
+Escolha 1 entre as etapas reais do CRM da empresa listadas acima que melhor reflete o momento da negociação:
+- Se enviou a chave PIX ou aguarda comprovante/pagamento: escolha a etapa mais condizente (ex: "Aguardando Pagamento" ou "Negociando").
+` +
       (stagesFinaisNomes.length
-        ? `Use uma etapa final (${stagesFinaisNomes.join(" / ")}) APENAS se o cliente confirmou (ganho) ou recusou claramente (perda). `
+        ? `- Use uma etapa final (${stagesFinaisNomes.join(" / ")}) APENAS se o cliente confirmou o pagamento/pedido (ganho) ou recusou/desistiu claramente (perda).\n`
         : "") +
       `Esse marcador é interno, NÃO aparece pro cliente.`,
   );
@@ -313,10 +356,26 @@ export interface AgendarBrief { inicio: string; fim: string; titulo: string; }
 export function parseAiOutput(
   raw: string,
   stages?: StageBrief[],
-): { parts: string[]; stage: string | null; agendar: AgendarBrief | null } {
+): { parts: string[]; stage: string | null; agendar: AgendarBrief | null; fotoUrl: string | null; pixValor: number | null } {
   let text = raw || "";
   let stage: string | null = null;
   let agendar: AgendarBrief | null = null;
+  let fotoUrl: string | null = null;
+
+  const fotoMatch = text.match(/\[\s*(?:ENVIAR_FOTO|FOTO)\s*:\s*([^\]]+)\]/i);
+  if (fotoMatch) {
+    fotoUrl = fotoMatch[1].trim();
+    text = text.replace(fotoMatch[0], "").trim();
+  }
+
+  let pixValor: number | null = null;
+  const pixMatch = text.match(/\[\s*(?:PIX_COPIA_E_COLA|GERAR_PIX|PIX)\s*:\s*([^\]]+)\]/i);
+  if (pixMatch) {
+    const rawVal = pixMatch[1].replace(/[^\d.,]/g, "").replace(",", ".");
+    const parsed = parseFloat(rawVal);
+    if (!isNaN(parsed) && parsed > 0) pixValor = parsed;
+    text = text.replace(pixMatch[0], "").trim();
+  }
 
   const agMatch = text.match(/\[\s*AGENDAR\s*:\s*([^\]]+)\]/i);
   if (agMatch) {
@@ -351,7 +410,7 @@ export function parseAiOutput(
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
     .slice(0, 3);
-  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar };
+  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor };
 }
 
 export function classifyStagePromptInstruction(): string {

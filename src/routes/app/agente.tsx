@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { HelpTip } from "@/components/help-tip";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -11,12 +11,13 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard } from "lucide-react";
 import { brand } from "@/config/brand";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { testAiReply } from "@/lib/evolution.functions";
 import { generateAgentConfig, analyzeBusinessBrief, type BriefQuestion } from "@/lib/agent-ai.functions";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { defaultHours, DIA_LABEL, type BusinessHours } from "@/lib/business-hours";
 
 export const Route = createFileRoute("/app/agente")({
   head: () => ({ meta: [{ title: `${brand.name} — Agente IA` }] }),
@@ -24,8 +25,16 @@ export const Route = createFileRoute("/app/agente")({
     const r = context?.membership?.role;
     if (r === "atendente") throw redirect({ to: "/app/dashboard" });
   },
-  component: AgentePage,
+  component: AgenteRouteComponent,
 });
+
+function AgenteRouteComponent() {
+  const state = useRouterState();
+  if (state.location.pathname.startsWith("/app/agente/")) {
+    return <Outlet />;
+  }
+  return <AgentePage />;
+}
 
 const PLACEHOLDER = `Ex: Tenho uma padaria artesanal na Vila Mariana, em São Paulo, aberta de seg a sáb das 6h às 20h. Vendo pães de fermentação natural, doces, bolos sob encomenda e cestas de café da manhã. Entrego em até 5km via Loggi. Quero que a IA atenda no WhatsApp: cumprimente, descubra o que o cliente quer, sugira combos, confirme endereço e mande o link de pagamento. Pode oferecer o cupom PADARIA10 quando fizer sentido.`;
 
@@ -59,6 +68,12 @@ function AgentePage() {
   const [palavraPausar, setPalavraPausar] = useState("/pausar");
   const [palavraDespausar, setPalavraDespausar] = useState("/despausar");
   const [responderEmPartes, setResponderEmPartes] = useState(true);
+  const [baseConhecimento, setBaseConhecimento] = useState("");
+  const [horarios, setHorarios] = useState<BusinessHours>(defaultHours());
+  const [msgFora, setMsgFora] = useState("Olá! No momento estamos fora do horário de atendimento. Retornamos em breve.");
+  const [chavePix, setChavePix] = useState("");
+  const [titularPix, setTitularPix] = useState("");
+  const [instrucoesPagamento, setInstrucoesPagamento] = useState("");
 
   const [testMsg, setTestMsg] = useState("Oi, vocês entregam aqui?");
   const [testReply, setTestReply] = useState<string[]>([]);
@@ -75,9 +90,21 @@ function AgentePage() {
       setPalavraPausar(data.palavra_pausar || "/pausar");
       setPalavraDespausar(data.palavra_despausar || "/despausar");
       setResponderEmPartes(data.responder_em_partes ?? true);
+      setBaseConhecimento((data as any).base_conhecimento || "");
+      setHorarios((data as any).horarios_atendimento || defaultHours());
+      setMsgFora((data as any).mensagem_fora_horario || "Olá! No momento estamos fora do horário de atendimento. Retornamos em breve.");
+      setChavePix((data as any).chave_pix || "");
+      setTitularPix((data as any).titular_pix || "");
+      setInstrucoesPagamento((data as any).instrucoes_pagamento || "");
       setPromptPreview(buildSystemPrompt(data as any, { responderEmPartes: data.responder_em_partes ?? true, produtos: [] }));
     } else if (data) {
       setCfg(data);
+      setBaseConhecimento((data as any).base_conhecimento || "");
+      setHorarios((data as any).horarios_atendimento || defaultHours());
+      setMsgFora((data as any).mensagem_fora_horario || "Olá! No momento estamos fora do horário de atendimento. Retornamos em breve.");
+      setChavePix((data as any).chave_pix || "");
+      setTitularPix((data as any).titular_pix || "");
+      setInstrucoesPagamento((data as any).instrucoes_pagamento || "");
     }
     setLoading(false);
   }
@@ -143,6 +170,12 @@ function AgentePage() {
       palavra_pausar: palavraPausar,
       palavra_despausar: palavraDespausar,
       responder_em_partes: responderEmPartes,
+      base_conhecimento: baseConhecimento,
+      horarios_atendimento: horarios,
+      mensagem_fora_horario: msgFora,
+      chave_pix: chavePix,
+      titular_pix: titularPix,
+      instrucoes_pagamento: instrucoesPagamento,
     };
     const { user_id: _u, company_id: _c, updated_at: _ua, ...rest } = payload;
     const { error } = await supabase.from("agent_config").upsert(
@@ -327,6 +360,145 @@ function AgentePage() {
             <SummaryRow label="Como vende" value={cfg?.como_vender} multiline />
             <SummaryRow label="Pode fazer" value={cfg?.pode_fazer} multiline />
             <SummaryRow label="Não pode fazer" value={cfg?.nao_pode_fazer} multiline />
+          </Section>
+
+          <Section title="Base de Conhecimento & FAQ (RAG)" icon={<BookOpen className="size-3.5" />}>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">
+                Perguntas frequentes, tabelas de preços, normas ou procedimentos para a IA consultar ao responder clientes.
+              </Label>
+              <Textarea
+                value={baseConhecimento}
+                onChange={(e) => setBaseConhecimento(e.target.value)}
+                rows={5}
+                placeholder="Exemplo:&#10;Q: Qual o valor da taxa de entrega?&#10;R: A taxa de entrega é R$ 8,00 para até 5km.&#10;&#10;Q: Aceitam PIX?&#10;R: Sim, aceitamos PIX e todos os cartões de crédito."
+                className="bg-[var(--panel-2)] text-xs font-mono"
+              />
+            </div>
+          </Section>
+
+          <Section title="Horário de Atendimento & Mensagem de Ausência" icon={<Clock className="size-3.5" />}>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3">
+                <div>
+                  <div className="text-sm font-medium">Controle de Horário Ativo</div>
+                  <div className="text-xs text-muted-foreground">Fora destes horários, o sistema enviará a mensagem de ausência e não chamará a IA.</div>
+                </div>
+                <Switch checked={horarios.enabled} onCheckedChange={(v) => setHorarios((prev) => ({ ...prev, enabled: v }))} />
+              </div>
+
+              {horarios.enabled && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Horários por dia da semana</Label>
+                    <div className="grid gap-2">
+                      {["1", "2", "3", "4", "5", "6", "0"].map((d) => {
+                        const daySched = horarios.dias[d];
+                        const isOpen = !!daySched;
+                        return (
+                          <div key={d} className="flex items-center justify-between gap-3 text-xs bg-[var(--panel-2)] p-2.5 rounded-lg border border-[var(--border)]">
+                            <div className="w-24 font-medium">{DIA_LABEL[d]}</div>
+                            <div className="flex items-center gap-2">
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isOpen}
+                                  onChange={(e) => {
+                                    const nextDias = { ...horarios.dias };
+                                    if (e.target.checked) {
+                                      nextDias[d] = { abre: "09:00", fecha: "18:00" };
+                                    } else {
+                                      nextDias[d] = null;
+                                    }
+                                    setHorarios({ ...horarios, dias: nextDias });
+                                  }}
+                                  className="rounded"
+                                />
+                                <span>{isOpen ? "Aberto" : "Fechado"}</span>
+                              </label>
+                              {isOpen && (
+                                <div className="flex items-center gap-1.5 ml-2">
+                                  <Input
+                                    type="time"
+                                    value={daySched.abre}
+                                    onChange={(e) => {
+                                      const nextDias = { ...horarios.dias };
+                                      nextDias[d] = { ...daySched, abre: e.target.value };
+                                      setHorarios({ ...horarios, dias: nextDias });
+                                    }}
+                                    className="h-7 w-24 text-xs py-0 px-1"
+                                  />
+                                  <span>às</span>
+                                  <Input
+                                    type="time"
+                                    value={daySched.fecha}
+                                    onChange={(e) => {
+                                      const nextDias = { ...horarios.dias };
+                                      nextDias[d] = { ...daySched, fecha: e.target.value };
+                                      setHorarios({ ...horarios, dias: nextDias });
+                                    }}
+                                    className="h-7 w-24 text-xs py-0 px-1"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2">
+                    <Label className="text-xs font-semibold">Mensagem automática fora do expediente</Label>
+                    <Textarea
+                      value={msgFora}
+                      onChange={(e) => setMsgFora(e.target.value)}
+                      rows={2}
+                      placeholder="Olá! No momento estamos fora do horário de atendimento. Retornamos em breve."
+                      className="bg-[var(--panel-2)] text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </Section>
+
+          <Section title="Vendas & Pagamento Instantâneo (PIX)" icon={<CreditCard className="size-3.5" />}>
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Configure os dados oficiais para que a IA feche pedidos, passe a chave PIX de forma limpa e oriente o cliente a enviar o comprovante.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Chave PIX (Telefone, CNPJ, CPF, Email ou Chave Aleatória)</Label>
+                  <Input
+                    value={chavePix}
+                    onChange={(e) => setChavePix(e.target.value)}
+                    placeholder="Ex: 11999998888 ou pix@empresa.com"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Nome do Titular / Razão Social</Label>
+                  <Input
+                    value={titularPix}
+                    onChange={(e) => setTitularPix(e.target.value)}
+                    placeholder="Ex: Espaço Cinthia França LTDA"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Instruções de Pagamento / Entrega</Label>
+                <Textarea
+                  value={instrucoesPagamento}
+                  onChange={(e) => setInstrucoesPagamento(e.target.value)}
+                  rows={2}
+                  placeholder="Ex: Envie o comprovante aqui para liberarmos imediatamente. Entrega via motoboy em até 2h ou envio pelos Correios."
+                  className="bg-[var(--panel-2)] text-xs"
+                />
+              </div>
+            </div>
           </Section>
 
           <Collapsible>

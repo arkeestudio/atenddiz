@@ -2,10 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 async function buildOrigin() {
-  const { getRequest } = await import("@tanstack/react-start/server");
-  const req = getRequest();
-  const u = new URL(req.url);
-  return `${u.protocol}//${u.host}`;
+  const { getRequestOrigin } = await import("@/lib/request-utils.server");
+  return getRequestOrigin();
 }
 
 
