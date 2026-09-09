@@ -120,7 +120,7 @@ function ConexaoPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">Conexão WhatsApp <HelpTip text="Pareie seu número escaneando o QR Code no celular. Depois disso, o agente passa a responder automaticamente as mensagens recebidas." /></h1>
-          <p className="text-sm text-muted-foreground">Conecte sua linha via Evolution API.</p>
+          <p className="text-sm text-muted-foreground">Conecte sua linha via OpenWA (WhatsApp Automate).</p>
         </div>
         {!plan.loading && (
           <PlanUsageBadge label="números" used={plan.usage.instancias} limit={plan.limites.instancias} />
@@ -162,7 +162,7 @@ function ConexaoPage() {
 
         {qr ? (
           <div className="grid md:grid-cols-2 gap-6 items-center">
-            <div className="bg-white p-4 rounded-xl border border-border w-fit mx-auto">
+            <div className="bg-white p-4 rounded-xl border border-border w-fit mx-auto shadow-sm">
               <img src={qr} alt="QR Code WhatsApp" className="size-72 object-contain" />
             </div>
             <div className="space-y-3 text-sm">
@@ -171,13 +171,18 @@ function ConexaoPage() {
                 <li>Abra o WhatsApp no celular.</li>
                 <li>Toque em <b>Aparelhos conectados</b>.</li>
                 <li>Toque em <b>Conectar um aparelho</b>.</li>
-                <li>Aponte para esta tela.</li>
+                <li>Aponte a câmera para este QR Code.</li>
               </ol>
-              <p className="text-xs text-muted-foreground">Verificando a cada 5 s.</p>
+              <p className="text-xs text-muted-foreground">Sincronizando a cada 5 segundos...</p>
             </div>
           </div>
         ) : status === "connected" ? (
           <div className="text-sm text-muted-foreground">Tudo certo! As mensagens serão respondidas automaticamente.</div>
+        ) : status === "connecting" ? (
+          <div className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
+            <Loader2 className="size-5 animate-spin text-primary" />
+            <span>Iniciando sessão do WhatsApp e gerando QR Code... Aguarde alguns segundos.</span>
+          </div>
         ) : (
           <div className="text-sm text-muted-foreground">Clique em <b>Conectar WhatsApp</b> para gerar o QR Code.</div>
         )}

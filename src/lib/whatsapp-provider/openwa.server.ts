@@ -8,6 +8,50 @@ function env() {
   return { url: url.replace(/\/+$/, ""), key };
 }
 
+let startingPromise: Promise<void> | null = null;
+
+async function ensureOpenWAServerRunning(url: string) {
+  if (!url.includes("localhost:2785") && !url.includes("127.0.0.1:2785")) return;
+  if (startingPromise) return startingPromise;
+
+  startingPromise = (async () => {
+    console.log("[openwa] Servidor OpenWA local offline na porta 2785. Iniciando openwa_server.mjs automaticamente...");
+    try {
+      const { spawn } = await import("child_process");
+      const path = await import("path");
+      const serverPath = path.resolve(process.cwd(), "openwa_server.mjs");
+
+      const child = spawn(process.execPath, [serverPath], {
+        detached: true,
+        stdio: "ignore",
+        cwd: process.cwd(),
+      });
+      child.unref();
+
+      // Aguarda até o servidor responder (até 8 segundos)
+      for (let i = 0; i < 16; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const check = await fetch(`${url}/api/sessions`, {
+            method: "GET",
+            signal: AbortSignal.timeout(800),
+          });
+          if (check.status !== 502 && check.status !== 504) {
+            console.log("[openwa] Servidor local OpenWA iniciado com sucesso e respondendo!");
+            break;
+          }
+        } catch {}
+      }
+    } catch (e: any) {
+      console.warn("[openwa] Falha ao auto-iniciar openwa_server.mjs:", e.message);
+    } finally {
+      startingPromise = null;
+    }
+  })();
+
+  return startingPromise;
+}
+
 async function openwaFetch<T = any>(
   path: string,
   init: RequestInit & { json?: any } = {},
@@ -28,7 +72,20 @@ async function openwaFetch<T = any>(
       body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
     });
   } catch (e: any) {
-    throw new Error(`OpenWA API indisponível: ${e?.message || "falha de rede"}.${SUPPORT_SUFFIX}`);
+    if (url.includes("localhost:2785") || url.includes("127.0.0.1:2785")) {
+      await ensureOpenWAServerRunning(url);
+      try {
+        res = await fetch(`${url}${fullPath}`, {
+          ...init,
+          headers,
+          body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
+        });
+      } catch (retryErr: any) {
+        throw new Error(`OpenWA API indisponível: ${retryErr?.message || "falha de rede"}.${SUPPORT_SUFFIX}`);
+      }
+    } else {
+      throw new Error(`OpenWA API indisponível: ${e?.message || "falha de rede"}.${SUPPORT_SUFFIX}`);
+    }
   }
 
   const text = await res.text();
