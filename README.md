@@ -1,7 +1,6 @@
-<div align="center">
+# Atenddiz
 
-# 🚀 Atenddiz
-### Plataforma de Atendimento Comercial Inteligente, CRM Kanban e Agente IA 24/7 no WhatsApp
+Plataforma de Atendimento Comercial Inteligente, CRM Kanban e Agente IA 24/7 no WhatsApp.
 
 [![Licença](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node->=20.0.0-blue.svg)](https://nodejs.org/)
@@ -11,63 +10,64 @@
 [![Supabase](https://img.shields.io/badge/database-Supabase-emerald.svg)](https://supabase.com/)
 [![Gemini](https://img.shields.io/badge/AI-Google_Gemini_2.5-orange.svg)](https://deepmind.google/technologies/gemini/)
 
-<p align="center">
-  Transforme seu WhatsApp em uma máquina de vendas e atendimento automatizado com inteligência artificial generativa, pipeline CRM Kanban interativo e transbordo humano inteligente.
-</p>
-
-</div>
+Transforme seu WhatsApp em uma máquina de vendas e atendimento automatizado com inteligência artificial generativa, pipeline CRM Kanban interativo e transbordo humano inteligente.
 
 ---
 
-## 📌 Sumário
+## Sumário
 
-1. [Visão Geral](#-visão-geral)
-2. [Principais Funcionalidades](#-principais-funcionalidades)
-3. [Arquitetura do Sistema](#-arquitetura-do-sistema)
-4. [Stack Tecnológica](#-stack-tecnológica)
-5. [Estrutura do Repositório](#-estrutura-do-repositório)
-6. [Guia de Instalação e Execução Local](#-guia-de-instalação-e-execução-local)
-7. [Configuração de Variáveis de Ambiente](#-configuração-de-variáveis-de-ambiente)
-8. [Executando em Produção com PM2](#-executando-em-produção-com-pm2)
-9. [Solução de Problemas Frequentes (Troubleshooting)](#-solução-de-problemas-frequentes-troubleshooting)
-10. [Licença e Contribuição](#-licença-e-contribuição)
+- [Visão Geral](#visão-geral)
+- [Principais Funcionalidades](#principais-funcionalidades)
+- [Arquitetura do Sistema](#arquitetura-do-sistema)
+- [Stack Tecnológica](#stack-tecnológica)
+- [Estrutura do Repositório](#estrutura-do-repositório)
+- [Guia de Instalação e Execução Local](#guia-de-instalação-e-execução-local)
+- [Configuração de Variáveis de Ambiente](#configuração-de-variáveis-de-ambiente)
+- [Executando em Produção com PM2](#executando-em-produção-com-pm2)
+- [Solução de Problemas Frequentes](#solução-de-problemas-frequentes)
+- [Licença e Direitos](#licença-e-direitos)
 
 ---
 
-## 💡 Visão Geral
+## Visão Geral
 
-O **Atenddiz** é uma solução *fullstack* criada para empresas que desejam automatizar conversas no WhatsApp sem perder a humanização e a eficiência comercial. 
+O **Atenddiz** é uma solução fullstack criada para empresas que desejam automatizar conversas no WhatsApp sem perder a humanização e a eficiência comercial.
 
 Diferente de chatbots baseados em fluxos rígidos com menus numéricos, o Atenddiz utiliza **modelos de linguagem avançados (Google Gemini 2.5 Flash Lite)** integrados ao contexto em tempo real do negócio, catálogo de produtos, tabela de preços, horários de funcionamento e regras de negócio personalizáveis.
 
 ---
 
-## ✨ Principais Funcionalidades
+## Principais Funcionalidades
 
-### 🤖 1. Agente IA com Modos Especializados
+### 1. Agente IA com Modos Especializados
+
 - **Modo Vendedor Ativo (Foco em Conversão):** Conduz o lead de forma persuasiva pelo funil de vendas, descobre dores e necessidades, apresenta produtos do catálogo e gera cobrança PIX imediata (com código Copia e Cola automático e QR code dinâmico).
 - **Modo Assistente Receptivo (Foco em Suporte):** Tira dúvidas frequentes, orienta sobre políticas e horários de atendimento, priorizando acolhimento antes de encaminhar para a equipe.
 - **Divisão Inteligente em Bolhas:** Opção de envio fragmentado (1 a 3 bolhas de mensagem) com pausas naturais, simulando uma conversa humana realista.
 - **Pausa Automática por Intervenção Humana:** A IA pausa instantaneamente suas respostas quando um atendente assume a conversa pelo painel ou pelo WhatsApp.
 
-### 📋 2. Encaminhamento & Transbordo com Resumo Executivo (Briefing IA)
+### 2. Encaminhamento e Transbordo com Resumo Executivo (Briefing IA)
+
 - **Briefing Executivo Automático:** Quando o cliente solicita atendimento humano ou fecha negócio, a IA compila em segundos um relatório estruturado:
   - Perfil e interesse do lead;
   - Pontos negociados e objeções identificadas;
   - Link direto (`wa.me`) para o atendente assumir a conversa com 1 clique.
 - **Disparo no WhatsApp da Equipe:** O resumo é encaminhado diretamente para o número configurado do atendente ou supervisor.
 
-### 📊 3. CRM Kanban Multietapas em Tempo Real
+### 3. CRM Kanban Multietapas em Tempo Real
+
 - Visualização completa do pipeline de vendas (*Novos Leads, Em Atendimento, Aguardando Pagamento, Concluídos, Perdidos*).
-- Arraste e solte de cartões (*Drag & Drop*) alimentado por `@dnd-kit`.
+- Arraste e solte de cartões (*Drag and Drop*) alimentado por `@dnd-kit`.
 - Gaveta lateral (*Lead Drawer*) com histórico detalhado das conversas, campos personalizados, anotações internas e transbordo manual.
 
-### 💬 4. Painel de Conversas Unificado (Inbox Web)
+### 4. Painel de Conversas Unificado (Inbox Web)
+
 - Interface idêntica ao WhatsApp Web moderna com suporte a temas.
 - Visualização de mensagens de texto, notas de voz (com transcrição via IA), imagens e comprovantes de pagamento.
 - **Copilot de Atendimento:** Botões para resumir a conversa com 1 clique e sugerir respostas personalizadas.
 
-### 🌐 5. WhatsApp Gateway Nativo (OpenWA Server)
+### 5. WhatsApp Gateway Nativo (OpenWA Server)
+
 - Servidor WhatsApp Web nativo e independente via Puppeteer (`openwa_server.mjs`).
 - Suporte nativo ao protocolo WhatsApp Multi-Device (MD), mapeando automaticamente IDs locais (`@lid`) para números telefônicos reais (`@c.us`).
 - Auto-inicialização em segundo plano no arranque do sistema ou via orquestrador PM2.
@@ -75,7 +75,7 @@ Diferente de chatbots baseados em fluxos rígidos com menus numéricos, o Atendd
 
 ---
 
-## 🏗 Arquitetura do Sistema
+## Arquitetura do Sistema
 
 ```mermaid
 flowchart TD
@@ -97,10 +97,10 @@ flowchart TD
 
 ---
 
-## 🛠 Stack Tecnológica
+## Stack Tecnológica
 
 | Camada | Tecnologia | Descrição |
-|---|---|---|
+| --- | --- | --- |
 | **Frontend** | React 19, TanStack Router, TanStack Start | SPA/SSR moderno com roteamento type-safe |
 | **Estilização** | Tailwind CSS v4, Radix UI, Lucide Icons | Design system moderno, responsivo e dark/light mode |
 | **Backend** | TanStack Start Server Functions, Node.js | Rotas de API e funções server-side integradas |
@@ -111,7 +111,7 @@ flowchart TD
 
 ---
 
-## 📁 Estrutura do Repositório
+## Estrutura do Repositório
 
 ```text
 Atenddiz/
@@ -148,51 +148,59 @@ Atenddiz/
 
 ---
 
-## 💻 Guia de Instalação e Execução Local
+## Guia de Instalação e Execução Local
 
 ### Pré-requisitos
+
 - **Node.js**: Versão 20.x ou superior (recomendado Node 22+)
 - **NPM** ou **PNPM**
 - **Navegador Chrome/Chromium** instalado (utilizado pelo OpenWA)
 - Projeto no **Supabase** configurado com as migrações
 
 ### 1. Clonar o Repositório
+
 ```bash
 git clone https://github.com/conddiz/atenddiz.git
 cd atenddiz
 ```
 
 ### 2. Instalar as Dependências
+
 ```bash
 npm install
 ```
 
 ### 3. Configurar o Arquivo `.env`
+
 Copie o modelo de variáveis de ambiente e preencha as credenciais:
+
 ```bash
 cp .env.example .env
 ```
-*(Veja a seção abaixo para detalhes das variáveis)*
 
 ### 4. Iniciar os Serviços
 
-Para rodar em desenvolvimento, você precisa de dois processos ativos:
+Para rodar em desenvolvimento, execute dois terminais:
 
-**Terminal 1 — Servidor WhatsApp (OpenWA):**
+#### Terminal 1 — Servidor WhatsApp (OpenWA)
+
 ```bash
 npm run openwa
 ```
-*O servidor iniciará na porta `2785`.*
 
-**Terminal 2 — Aplicação Web (Atenddiz Frontend + API):**
+O servidor iniciará na porta `2785`.
+
+#### Terminal 2 — Aplicação Web (Atenddiz Frontend + API)
+
 ```bash
 npm run dev -- --port 3000
 ```
-*A aplicação estará disponível em `http://localhost:3000`.*
+
+A aplicação estará disponível em `http://localhost:3000`.
 
 ---
 
-## 🔑 Configuração de Variáveis de Ambiente
+## Configuração de Variáveis de Ambiente
 
 Crie o arquivo `.env` na raiz do projeto com a seguinte estrutura:
 
@@ -210,62 +218,71 @@ OPENWA_API_URL="http://localhost:2785"
 OPENWA_API_KEY=""
 
 # Provedor de IA (Gemini ou OpenAI)
-# Caso utilize chave própria no plano Pro:
 OPENAI_API_KEY=""
 ```
 
 ---
 
-## 🚀 Executando em Produção com PM2
+## Executando em Produção com PM2
 
 Para rodar em servidores VPS (Ubuntu, Debian, Windows Server) com auto-reinicialização em caso de falhas:
 
-1. **Instale o PM2 globalmente:**
-   ```bash
-   npm install -g pm2
-   ```
+1. Instale o PM2 globalmente:
 
-2. **Inicie os processos através do arquivo `ecosystem.config.cjs`:**
-   ```bash
-   npm run prod:start
-   ```
+```bash
+npm install -g pm2
+```
 
-3. **Verifique o status dos serviços:**
-   ```bash
-   pm2 status
-   ```
-   *Você verá `atenddiz-web` (porta 3000) e `atenddiz-openwa` (porta 2785) rodando em segundo plano.*
+2. Inicie os processos através do arquivo `ecosystem.config.cjs`:
 
-4. **Para acompanhar os logs em tempo real:**
-   ```bash
-   pm2 logs
-   ```
+```bash
+npm run prod:start
+```
+
+3. Verifique o status dos serviços:
+
+```bash
+pm2 status
+```
+
+4. Para acompanhar os logs em tempo real:
+
+```bash
+pm2 logs
+```
 
 ---
 
-## 🔧 Solução de Problemas Frequentes (Troubleshooting)
+## Solução de Problemas Frequentes
 
-### 1. "Porta 2785 já está em uso (EADDRINUSE)"
+### 1. Porta 2785 já está em uso (EADDRINUSE)
+
 Se o processo do OpenWA já estiver em execução em segundo plano:
-- **No Windows (PowerShell):**
-  ```powershell
-  Get-NetTCPConnection -LocalPort 2785 | Select-Object OwningProcess
-  Stop-Process -Id <PID_ENCONTRADO> -Force
-  ```
-- **No Linux:**
-  ```bash
-  fuser -k 2785/tcp
-  ```
 
-### 2. "Mensagem não envia para números que nunca conversaram"
-O servidor OpenWA integrado já possui a correção nativa para resolução de contas Multi-Device (`WAWebQueryExistsJob`) e ignora o bloqueio DRM do WhatsApp Web, garantindo que qualquer número com DDD válido receba mensagens normalmente.
+No Windows (PowerShell):
+
+```powershell
+Get-NetTCPConnection -LocalPort 2785 | Select-Object OwningProcess
+Stop-Process -Id <PID_ENCONTRADO> -Force
+```
+
+No Linux:
+
+```bash
+fuser -k 2785/tcp
+```
+
+### 2. Mensagem não envia para números sem conversa aberta
+
+O servidor OpenWA integrado já possui a correção nativa para resolução de contas Multi-Device (`WAWebQueryExistsJob`) e contorna o bloqueio de números não salvos, garantindo que qualquer número com DDD válido receba mensagens normalmente.
 
 ### 3. QR Code não aparece na tela de Conexão
+
 Certifique-se de que o `openwa_server.mjs` está rodando e acessível na URL configurada em `OPENWA_API_URL` (`http://localhost:2785`).
 
 ---
 
-## 📄 Licença e Direitos
+## Licença e Direitos
 
 Distribuído sob a licença **MIT**. Consulte `LICENSE` para mais detalhes.
 
