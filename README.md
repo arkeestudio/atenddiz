@@ -227,25 +227,27 @@ OPENAI_API_KEY=""
 
 Para rodar em servidores VPS (Ubuntu, Debian, Windows Server) com auto-reinicialização em caso de falhas:
 
-1. Instale o PM2 globalmente:
+### 1. Instalação Global do PM2
 
 ```bash
 npm install -g pm2
 ```
 
-2. Inicie os processos através do arquivo `ecosystem.config.cjs`:
+### 2. Iniciar os Processos
+
+Inicie os processos através do arquivo `ecosystem.config.cjs`:
 
 ```bash
 npm run prod:start
 ```
 
-3. Verifique o status dos serviços:
+### 3. Verificar o Status dos Serviços
 
 ```bash
 pm2 status
 ```
 
-4. Para acompanhar os logs em tempo real:
+### 4. Acompanhar os Logs em Tempo Real
 
 ```bash
 pm2 logs
