@@ -23,7 +23,7 @@ Transforme seu WhatsApp em uma máquina de vendas e atendimento automatizado com
 - [Estrutura do Repositório](#estrutura-do-repositório)
 - [Guia de Instalação e Execução Local](#guia-de-instalação-e-execução-local)
 - [Configuração de Variáveis de Ambiente](#configuração-de-variáveis-de-ambiente)
-- [Executando em Produção com PM2](#executando-em-produção-com-pm2)
+- [Produção](#produção)
 - [Solução de Problemas Frequentes](#solução-de-problemas-frequentes)
 - [Licença e Direitos](#licença-e-direitos)
 
@@ -68,9 +68,9 @@ Diferente de chatbots baseados em fluxos rígidos com menus numéricos, o Atendd
 
 ### 5. WhatsApp Gateway Nativo (OpenWA Server)
 
-- Servidor WhatsApp Web nativo e independente via Puppeteer (`openwa_server.mjs`).
+- Servidor WhatsApp Web nativo e independente via Puppeteer (`openwa-server/`), com autenticação por chave de API.
 - Suporte nativo ao protocolo WhatsApp Multi-Device (MD), mapeando automaticamente IDs locais (`@lid`) para números telefônicos reais (`@c.us`).
-- Auto-inicialização em segundo plano no arranque do sistema ou via orquestrador PM2.
+- Roda em uma VM própria com PM2 e restaura as sessões sozinho após reinícios.
 - Bypass automático de restrições de envio, permitindo comunicação fluida com novos contatos.
 
 ---
@@ -80,10 +80,10 @@ Diferente de chatbots baseados em fluxos rígidos com menus numéricos, o Atendd
 ```mermaid
 flowchart TD
     Cliente([Cliente no WhatsApp]) <-->|Mensagens WhatsApp| WA[WhatsApp Multi-Device / Web]
-    WA <-->|Puppeteer / WebSocket| OpenWA[OpenWA Server :2785\nopenwa_server.mjs]
-    OpenWA -->|Webhook HTTP POST| WebhookRoute[Atenddiz Webhook\n/api/public/whatsapp-webhook :3000]
+    WA <-->|Puppeteer / WebSocket| OpenWA[OpenWA Server - VM\nopenwa-server/]
+    OpenWA -->|Webhook HTTP POST| WebhookRoute[Atenddiz Webhook\n/api/public/whatsapp-webhook]
     
-    subgraph Atenddiz Engine [:3000]
+    subgraph Atenddiz Engine [Vercel]
         WebhookRoute --> PromptEngine[AI Prompt Builder & Handover]
         PromptEngine <--> GeminiAPI[Google Gemini 2.5 Flash Lite]
         PromptEngine --> Database[(Supabase PostgreSQL)]
@@ -106,8 +106,8 @@ flowchart TD
 | **Backend** | TanStack Start Server Functions, Node.js | Rotas de API e funções server-side integradas |
 | **Banco de Dados** | Supabase (PostgreSQL 15+) | Autenticação, Row Level Security (RLS) e Realtime |
 | **WhatsApp Engine** | Node.js + `@open-wa/wa-automate` | Gateway WhatsApp na porta 2785 com Puppeteer headless |
-| **Inteligência Artificial** | Google Gemini (2.5 Flash Lite) / Lovable AI | Geração de respostas, briefing de leads e transcrição de áudio |
-| **Orquestração** | PM2 (`ecosystem.config.cjs`) | Gerenciamento de processos em ambientes de produção |
+| **Inteligência Artificial** | Google Gemini, Anthropic Claude, OpenAI | Geração de respostas, briefing de leads e transcrição de áudio |
+| **Hospedagem** | Vercel (app) + VM com PM2 (`openwa-server/`) | App serverless e gateway WhatsApp em processo contínuo |
 
 ---
 
@@ -115,9 +115,11 @@ flowchart TD
 
 ```text
 Atenddiz/
-├── openwa_server.mjs               # Servidor dedicado OpenWA (porta 2785)
-├── ecosystem.config.cjs            # Configuração de deploy para PM2
-├── package.json                    # Dependências e scripts de execução
+├── openwa-server/                  # Gateway WhatsApp (instalação própria, roda na VM)
+│   ├── openwa_server.mjs           # API OpenWA (porta 2785)
+│   ├── ecosystem.config.cjs        # PM2 do servidor
+│   └── openwa-patches/             # Correções do @open-wa/wa-automate
+├── package.json                    # Dependências e scripts do app
 ├── vite.config.ts                  # Configuração do Vite e TanStack Start
 ├── src/
 │   ├── config/
@@ -160,7 +162,7 @@ Atenddiz/
 ### 1. Clonar o Repositório
 
 ```bash
-git clone https://github.com/conddiz/atenddiz.git
+git clone https://github.com/arkeestudio/atenddiz.git
 cd atenddiz
 ```
 
@@ -184,11 +186,14 @@ Para rodar em desenvolvimento, execute dois terminais:
 
 #### Terminal 1 — Servidor WhatsApp (OpenWA)
 
+Opcional: só é necessário para testar o WhatsApp localmente (em produção ele roda na VM).
+
 ```bash
+npm --prefix openwa-server install
 npm run openwa
 ```
 
-O servidor iniciará na porta `2785`.
+O servidor iniciará na porta `2785`. Ou aponte `OPENWA_API_URL` para o servidor de produção.
 
 #### Terminal 2 — Aplicação Web (Atenddiz Frontend + API)
 
@@ -205,52 +210,42 @@ A aplicação estará disponível em `http://localhost:3000`.
 Crie o arquivo `.env` na raiz do projeto com a seguinte estrutura:
 
 ```env
-# Conexão Supabase
+# Supabase
+SUPABASE_URL="https://seu-projeto.supabase.co"
+SUPABASE_PUBLISHABLE_KEY=""
+SUPABASE_SERVICE_ROLE_KEY=""
 VITE_SUPABASE_URL="https://seu-projeto.supabase.co"
-VITE_SUPABASE_ANON_KEY="sua-chave-anon"
-SUPABASE_SERVICE_ROLE_KEY="sua-chave-service-role"
+VITE_SUPABASE_PUBLISHABLE_KEY=""
 
-# Provedor do WhatsApp (padrão: openwa)
+# IA
+GEMINI_API_KEY=""
+ANTHROPIC_API_KEY=""
+
+# WhatsApp (OpenWA)
 WHATSAPP_PROVIDER="openwa"
-
-# OpenWA Server Local
 OPENWA_API_URL="http://localhost:2785"
 OPENWA_API_KEY=""
-
-# Provedor de IA (Gemini ou OpenAI)
-OPENAI_API_KEY=""
 ```
+
+A lista completa está em `.env.example`.
 
 ---
 
-## Executando em Produção com PM2
+## Produção
 
-Para rodar em servidores VPS (Ubuntu, Debian, Windows Server) com auto-reinicialização em caso de falhas:
+### App (Vercel)
 
-### 1. Instalação Global do PM2
+1. Importe o repositório na Vercel (preset TanStack Start).
+2. Cadastre as variáveis de ambiente acima, com `OPENWA_API_URL` apontando para o servidor OpenWA em HTTPS.
+3. Conecte o WhatsApp pelo domínio da Vercel (Conexão → Conectar), para o webhook apontar para ele.
 
-```bash
-npm install -g pm2
-```
+### Servidor WhatsApp (VM)
 
-### 2. Iniciar os Processos
-
-Inicie os processos através do arquivo `ecosystem.config.cjs`:
-
-```bash
-npm run prod:start
-```
-
-### 3. Verificar o Status dos Serviços
+O OpenWA precisa de um processo contínuo com Chrome, então não roda na Vercel. A instalação (Chrome, PM2, nginx e HTTPS) está em [`openwa-server/README.md`](openwa-server/README.md).
 
 ```bash
 pm2 status
-```
-
-### 4. Acompanhar os Logs em Tempo Real
-
-```bash
-pm2 logs
+pm2 logs atenddiz-openwa
 ```
 
 ---
@@ -280,7 +275,7 @@ O servidor OpenWA integrado já possui a correção nativa para resolução de c
 
 ### 3. QR Code não aparece na tela de Conexão
 
-Certifique-se de que o `openwa_server.mjs` está rodando e acessível na URL configurada em `OPENWA_API_URL` (`http://localhost:2785`).
+Certifique-se de que o servidor OpenWA está rodando e acessível na URL configurada em `OPENWA_API_URL`, com a mesma `OPENWA_API_KEY`. Em uma VM pequena o primeiro QR pode levar cerca de 40 segundos.
 
 ---
 

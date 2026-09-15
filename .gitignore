@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 node_modules
 dist
-!openwa-patches/**/dist/
+!openwa-server/openwa-patches/**/dist/
 dist-ssr
 .output
 .vinxi
@@ -44,8 +44,9 @@ dev-schema.sql
 **_IGNORE_**
 # end managed
 
-# Sessões registradas do servidor OpenWA (contém URLs de webhook com token)
+# Sessões registradas do servidor OpenWA (contém URLs de webhook com token) e chave da API
 openwa_sessions.json
+openwa-server/.api_key
 
 # Dumps de banco locais (fonte de verdade: supabase/migrations/)
 /*.sql

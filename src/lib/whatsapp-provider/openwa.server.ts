@@ -15,16 +15,18 @@ async function ensureOpenWAServerRunning(url: string) {
   if (startingPromise) return startingPromise;
 
   startingPromise = (async () => {
-    console.log("[openwa] Servidor OpenWA local offline na porta 2785. Iniciando openwa_server.mjs automaticamente...");
+    console.log("[openwa] Servidor OpenWA local offline na porta 2785. Iniciando openwa-server/openwa_server.mjs automaticamente...");
     try {
       const { spawn } = await import("child_process");
       const path = await import("path");
-      const serverPath = path.resolve(process.cwd(), "openwa_server.mjs");
+      // Só em desenvolvimento local; exige `npm install` dentro de openwa-server/.
+      const serverDir = path.resolve(process.cwd(), "openwa-server");
+      const serverPath = path.join(serverDir, "openwa_server.mjs");
 
       const child = spawn(process.execPath, [serverPath], {
         detached: true,
         stdio: "ignore",
-        cwd: process.cwd(),
+        cwd: serverDir,
       });
       child.unref();
 
