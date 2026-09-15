@@ -615,7 +615,7 @@ function AgentePage() {
                   💡 <span>Como a IA encaminha:</span>
                 </div>
                 <p>
-                  A IA pausa as respostas automáticas para não atrapalhar o humano e envia uma mensagem formatada contendo: <b>Nome do cliente, WhatsApp, etapa no CRM e o resumo inteligente do que ele precisa</b> com link direto para abrir no WhatsApp.
+                  A IA pausa as respostas automáticas para não atrapalhar o humano (e volta sozinha após 30 minutos sem resposta de um atendente) e envia uma mensagem formatada contendo: <b>Nome do cliente, WhatsApp, etapa no CRM e o resumo inteligente do que ele precisa</b> com link direto para abrir no WhatsApp.
                 </p>
               </div>
             </div>

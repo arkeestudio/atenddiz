@@ -635,7 +635,7 @@ function ConversasPage() {
   async function assumir() {
     if (!active) return;
     await toggleIa(false);
-    toast.success("Você assumiu este atendimento. IA pausada.");
+    toast.success("Você assumiu este atendimento. A IA volta sozinha após 30 min sem resposta sua.");
   }
 
   async function startVoiceRecording() {

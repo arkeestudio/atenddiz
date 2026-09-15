@@ -337,13 +337,37 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           }
           const { data: pauseRow } = await supabaseAdmin
             .from("contact_pause")
-            .select("pausado")
+            .select("pausado, updated_at")
             .eq("company_id", companyId)
             .eq("numero", number)
             .maybeSingle();
           if (pauseRow?.pausado) {
-            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
-            return new Response("paused-contact", { status: 200 });
+            // Atendimento humano expira: sem atividade humana (pausa ou mensagem de atendente)
+            // há HUMAN_IDLE_RESUME_MS, a IA reassume e responde esta mensagem.
+            const { data: lastHuman } = await supabaseAdmin
+              .from("mensagens")
+              .select("created_at")
+              .eq("company_id", companyId)
+              .eq("numero", number)
+              .eq("direcao", "saida")
+              .eq("autor", "humano")
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            const lastHumanActivity = Math.max(
+              pauseRow.updated_at ? new Date(pauseRow.updated_at).getTime() : 0,
+              lastHuman?.created_at ? new Date(lastHuman.created_at).getTime() : 0,
+            );
+            if (Date.now() - lastHumanActivity < HUMAN_IDLE_RESUME_MS) {
+              await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+              return new Response("paused-contact", { status: 200 });
+            }
+            await supabaseAdmin
+              .from("contact_pause")
+              .update({ pausado: false })
+              .eq("company_id", companyId)
+              .eq("numero", number);
+            console.log("[whatsapp] IA reassumiu após inatividade humana", companyId, number);
           }
 
           // Horário de atendimento: se ativo e fora do horário, manda mensagem padrão e não chama IA.
@@ -481,7 +505,10 @@ function extractPhoneNumber(data: any, key: any): string | null {
   return null;
 }
 
-const OPT_OUT_WORDS = ["parar", "pare", "cancelar", "sair", "remover", "descadastrar", "stop", "unsubscribe"];
+// Tempo sem atividade humana após o qual uma conversa pausada volta para a IA.
+const HUMAN_IDLE_RESUME_MS = 30 * 60_000;
+
+const OPT_OUT_WORDS =["parar", "pare", "cancelar", "sair", "remover", "descadastrar", "stop", "unsubscribe"];
 
 function isOptOutMessage(text: string) {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();

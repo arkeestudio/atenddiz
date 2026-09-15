@@ -512,20 +512,38 @@ const server = http.createServer(async (req, res) => {
             delete wid["$1"];
 
             let targetWid = wid;
+            let lidWid = null;
             if (!cleanJid.endsWith("@g.us") && !cleanJid.endsWith("@lid")) {
+              let exists;
               try {
-                const exists = await queryExistsMod.queryWidExists(wid);
-                if (exists && exists.wid) {
-                  targetWid = exists.wid;
-                  delete targetWid["$1"];
-                }
-              } catch (e) {}
+                exists = await queryExistsMod.queryWidExists(wid);
+              } catch (e) {
+                exists = undefined; // falha de rede na consulta: segue tentando enviar
+              }
+              if (exists === null || (exists && !exists.wid)) {
+                throw new Error("Este número não tem WhatsApp: " + cleanDigits);
+              }
+              if (exists && exists.wid) {
+                targetWid = exists.wid;
+                delete targetWid["$1"];
+                if (exists.lid) lidWid = exists.lid;
+              }
             }
 
-            let chat = window.Store.Chat.get(targetWid) || 
-                       window.Store.Chat.get(targetWid._serialized) || 
+            let chat = window.Store.Chat.get(targetWid) ||
+                       window.Store.Chat.get(targetWid._serialized) ||
+                       (lidWid && window.Store.Chat.get(lidWid)) ||
                        window.Store.Chat.get(cleanJid) ||
                        window.Store.Chat.getLatestChatForWid(targetWid);
+
+            // Contas migradas para LID: criar o chat "na mão" (Chat.add) falha com
+            // "Lid is missing in chat table". A ação oficial do WhatsApp Web resolve o LID.
+            if (!chat) {
+              try {
+                const found = await r("WAWebFindChatAction").findOrCreateLatestChat(targetWid);
+                chat = (found && found.chat) || found || null;
+              } catch (e) {}
+            }
 
             if (!chat) {
               window.Store.Chat.add({ id: targetWid });
