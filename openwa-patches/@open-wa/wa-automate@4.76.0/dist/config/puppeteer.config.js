@@ -1,0 +1,49 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.height = exports.width = exports.puppeteerConfig = exports.useragent = exports.createUserAgent = void 0;
+const puppeteerConfig = {
+    WAUrl: 'https://web.whatsapp.com',
+    width: 1440,
+    height: 900,
+    chromiumArgs: [
+        // `--app=${WAUrl}`,
+        '--log-level=3',
+        //'--start-maximized',
+        '--no-default-browser-check',
+        '--disable-site-isolation-trials',
+        '--no-experiments',
+        '--ignore-gpu-blacklist',
+        '--ignore-certificate-errors',
+        '--ignore-certificate-errors-spki-list',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-default-apps',
+        '--enable-features=NetworkService',
+        '--disable-setuid-sandbox',
+        '--no-sandbox',
+        // Extras
+        '--disable-infobars',
+        '--window-position=0,0',
+        '--disable-session-crashed-bubble',
+        '--disable-dev-shm-usage',
+        '--js-flags=--expose-gc',
+        // '--incognito',
+        //suggested in #563
+        // '--single-process',
+        // '--no-zygote',
+        // '--renderer-process-limit=1',
+        // '--no-first-run'
+        '--disable-features=site-per-process',
+        '--disable-gl-drawing-for-tests',
+        //keep awake in all situations
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
+    ]
+};
+exports.puppeteerConfig = puppeteerConfig;
+const createUserAgent = (waVersion) => `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36`;
+exports.createUserAgent = createUserAgent;
+exports.useragent = (0, exports.createUserAgent)('2.3000.1012345678');
+exports.width = puppeteerConfig.width;
+exports.height = puppeteerConfig.height;

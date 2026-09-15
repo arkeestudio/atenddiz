@@ -1,23 +1,78 @@
 import path from 'path';
+import fs from 'fs';
 import http from 'http';
+import crypto from 'crypto';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
 
-// Add bin directory to PATH so wmic.exe shim is found on Windows 11
-process.env.PATH = `c:\\PROJETOS\\AtenddizV2\\bin;${process.env.PATH}`;
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+// Windows 11 não tem mais wmic.exe; o shim em ./bin cobre as chamadas da biblioteca.
+if (process.platform === 'win32') {
+  process.env.PATH = `${path.join(SCRIPT_DIR, 'bin')};${process.env.PATH}`;
+}
 
 import wa from '@open-wa/wa-automate';
 
-const PORT = process.env.PORT || 2785;
+const PORT = Number(process.env.PORT) || 2785;
+const HOST = process.env.HOST || undefined; // ex: 127.0.0.1 atrás de um proxy (nginx)
+const API_KEY = (process.env.OPENWA_API_KEY || '').trim();
+const ENABLE_EVAL = process.env.OPENWA_ENABLE_EVAL === 'true';
+const SESSIONS_FILE = path.resolve(process.cwd(), process.env.OPENWA_SESSIONS_FILE || 'openwa_sessions.json');
 const sessions = new Map();
+
+// --- Sessões registradas: sobrevivem a reinícios (o login do WhatsApp fica nos .data.json) ---
+function loadRegisteredSessions() {
+  try {
+    const list = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    return Array.isArray(list) ? list.filter((s) => s && typeof s.name === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRegisteredSessions() {
+  const list = [...sessions.values()].map((s) => ({ name: s.id, webhookUrl: s.webhookUrl || null }));
+  try {
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(list, null, 2));
+  } catch (err) {
+    console.error('[OpenWA Server] Falha ao salvar sessões registradas:', err.message);
+  }
+}
+
+const SESSION_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+// Encerra os processos do Chrome que usam o perfil da sessão (_IGNORE_<sessão>).
+function killSessionBrowser(sessionId) {
+  if (!SESSION_NAME_RE.test(sessionId)) return;
+  const marker = `_IGNORE_${sessionId}`;
+  const proc =
+    process.platform === 'win32'
+      ? spawn('powershell', ['-NoProfile', '-Command',
+          `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like '*${marker}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`])
+      : spawn('pkill', ['-f', `${marker}( |$)`]);
+  proc.on('error', (err) => console.warn(`[OpenWA Server] Falha ao encerrar Chrome de ${sessionId}:`, err.message));
+}
+
+function isAuthorized(req) {
+  if (!API_KEY) {
+    // Sem chave configurada, só aceita chamadas da própria máquina.
+    const addr = req.socket.remoteAddress || '';
+    return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+  }
+  const supplied = String(req.headers['x-api-key'] || '');
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(API_KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 async function setSessionQr(sessionId, qrData) {
   if (!sessionId || !qrData) return;
   console.log(`[OpenWA Server] setSessionQr for "${sessionId}", length: ${qrData?.length}`);
-  let s = sessions.get(sessionId);
-  if (!s) {
-    s = { id: sessionId, status: 'CONNECTING', qrBase64: null, qrCode: null, client: null, webhookUrl: null };
-    sessions.set(sessionId, s);
-  }
+  // Só sessões criadas por getOrCreateSession: QR tardio de uma sessão apagada não a recria.
+  const s = sessions.get(sessionId);
+  if (!s) return;
 
   if (typeof qrData === 'string' && qrData.startsWith('data:image/')) {
     s.qrBase64 = qrData;
@@ -68,6 +123,7 @@ async function getOrCreateSession(name, webhookUrl) {
     webhookUrl: webhookUrl || null,
   };
   sessions.set(name, s);
+  saveRegisteredSessions();
 
   console.log(`[OpenWA Server] Starting session: ${name}`);
 
@@ -82,6 +138,11 @@ async function getOrCreateSession(name, webhookUrl) {
     headless: true,
     cacheEnabled: false,
   }).then(async (client) => {
+    if (sessions.get(name) !== s) {
+      // Sessão apagada enquanto aguardava o login: descarta o navegador.
+      try { await client.kill('session deleted'); } catch {}
+      return;
+    }
     console.log(`[OpenWA Server] Client connected for session: ${name}`);
     s.client = client;
     s.status = 'CONNECTED';
@@ -177,6 +238,47 @@ async function getOrCreateSession(name, webhookUrl) {
   return s;
 }
 
+function parseDataUrl(dataUrl) {
+  const match = /^data:([^,]*?)(;base64)?,(.*)$/s.exec(dataUrl || '');
+  if (!match) return null;
+  return { mimetype: match[1].split(';')[0].trim(), base64: match[3] };
+}
+
+let ffmpegBinary = null;
+async function getFfmpegBinary() {
+  if (ffmpegBinary) return ffmpegBinary;
+  try {
+    ffmpegBinary = (await import('ffmpeg-static')).default || 'ffmpeg';
+  } catch {
+    ffmpegBinary = 'ffmpeg';
+  }
+  return ffmpegBinary;
+}
+
+// Nota de voz do WhatsApp precisa ser OGG/Opus; o navegador grava em WebM.
+async function toOggOpusDataUrl(dataUrl) {
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) throw new Error('Áudio inválido: esperado data URL em base64');
+  if (parsed.mimetype === 'audio/ogg') return `data:audio/ogg;base64,${parsed.base64}`;
+
+  const bin = await getFfmpegBinary();
+  const output = await new Promise((resolve, reject) => {
+    const proc = spawn(bin, ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'libopus', '-b:a', '32k', '-f', 'ogg', 'pipe:1']);
+    const chunks = [];
+    let stderr = '';
+    proc.stdout.on('data', (c) => chunks.push(c));
+    proc.stderr.on('data', (c) => (stderr += c));
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ffmpeg falhou (${code}): ${stderr.slice(0, 300)}`));
+    });
+    proc.stdin.on('error', () => {});
+    proc.stdin.end(Buffer.from(parsed.base64, 'base64'));
+  });
+  return `data:audio/ogg;base64,${output.toString('base64')}`;
+}
+
 function parseJsonBody(req) {
   return new Promise((resolve) => {
     let data = '';
@@ -203,11 +305,21 @@ const server = http.createServer(async (req, res) => {
 
   console.log(`[OpenWA Server HTTP] ${method} ${pathname}`);
 
+  // Health check público (sem dados sensíveis) para monitoramento/proxy.
+  if (method === 'GET' && pathname === '/health') {
+    return json({ ok: true, sessions: sessions.size, authRequired: !!API_KEY });
+  }
+
+  if (!isAuthorized(req)) {
+    return json({ error: 'Unauthorized' }, 401);
+  }
+
   try {
     // POST /api/sessions
     if (method === 'POST' && pathname === '/api/sessions') {
       const body = await parseJsonBody(req);
       const name = body.name || 'default';
+      if (!SESSION_NAME_RE.test(name)) return json({ error: 'Nome de sessão inválido' }, 400);
       const s = await getOrCreateSession(name, body.webhookUrl);
       return json({ id: s.id, status: s.status });
     }
@@ -270,6 +382,7 @@ const server = http.createServer(async (req, res) => {
       const s = sessions.get(sessionId);
       if (s) {
         s.webhookUrl = body.url;
+        saveRegisteredSessions();
         console.log(`[OpenWA Server] Set webhookUrl for ${sessionId}: ${s.webhookUrl}`);
       }
       return json({ ok: true });
@@ -339,10 +452,13 @@ const server = http.createServer(async (req, res) => {
       const sessionId = decodeURIComponent(deleteMatch[1]);
       const s = sessions.get(sessionId);
       if (s) {
-        if (s.client) {
-          try { await s.client.close(); } catch {}
-        }
         sessions.delete(sessionId);
+        saveRegisteredSessions();
+        if (s.client) {
+          try { await s.client.kill('session deleted'); } catch {}
+        }
+        // Sessão sem login ainda não tem client: o Chrome dela precisa ser encerrado pelo perfil.
+        killSessionBrowser(sessionId);
       }
       return json({ ok: true });
     }
@@ -479,11 +595,30 @@ const server = http.createServer(async (req, res) => {
       }
 
       try {
-        const base64Data = body.base64 || body.audioUrl || '';
-        const result = await s.client.sendPtt(chatId, base64Data);
+        const base64Data = body.base64 || '';
+        const audio = base64Data ? await toOggOpusDataUrl(base64Data) : body.audioUrl || '';
+        if (!audio) return json({ error: 'Áudio vazio' }, 400);
+        const result = await s.client.sendPtt(chatId, audio);
         return json({ messageId: result });
       } catch (err) {
         console.error(`[OpenWA Server] sendPtt error for ${chatId}:`, err.message);
+        return json({ error: err.message }, 500);
+      }
+    }
+
+    // GET /api/sessions/:sessionId/messages/:messageId/media (baixa e descriptografa áudio/imagem recebidos)
+    const mediaMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages\/([^/]+)\/media$/);
+    if (method === 'GET' && mediaMatch) {
+      const sessionId = decodeURIComponent(mediaMatch[1]);
+      const messageId = decodeURIComponent(mediaMatch[2]);
+      const s = sessions.get(sessionId);
+      if (!s || !s.client) return json({ error: 'Session not connected' }, 400);
+      try {
+        const parsed = parseDataUrl(await s.client.decryptMedia(messageId));
+        if (!parsed) return json({ error: 'Mídia não encontrada' }, 404);
+        return json(parsed);
+      } catch (err) {
+        console.error(`[OpenWA Server] decryptMedia error for ${messageId}:`, err.message);
         return json({ error: err.message }, 500);
       }
     }
@@ -552,6 +687,10 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/sessions/:sessionId/eval
     const evalMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/eval$/);
+    // Executa código arbitrário no servidor: só para depuração local, com OPENWA_ENABLE_EVAL=true.
+    if (method === 'POST' && evalMatch && !ENABLE_EVAL) {
+      return json({ error: 'Not found' }, 404);
+    }
     if (method === 'POST' && evalMatch) {
       const sessionId = decodeURIComponent(evalMatch[1]);
       const body = await parseJsonBody(req);
@@ -581,8 +720,20 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`===================================================`);
-  console.log(`[OpenWA Server] Listening on http://localhost:${PORT}`);
+  console.log(`[OpenWA Server] Listening on http://${HOST || 'localhost'}:${PORT}`);
+  if (!API_KEY) console.warn('[OpenWA Server] OPENWA_API_KEY não definida: aceitando apenas chamadas locais (127.0.0.1).');
   console.log(`===================================================`);
+
+  // Reabre as sessões que já estavam conectadas antes do reinício (sem novo QR se o login ainda vale).
+  const registered = loadRegisteredSessions();
+  if (registered.length) {
+    console.log(`[OpenWA Server] Restaurando ${registered.length} sessão(ões): ${registered.map((s) => s.name).join(', ')}`);
+    for (const { name, webhookUrl } of registered) {
+      getOrCreateSession(name, webhookUrl).catch((err) =>
+        console.error(`[OpenWA Server] Falha ao restaurar ${name}:`, err.message),
+      );
+    }
+  }
 });

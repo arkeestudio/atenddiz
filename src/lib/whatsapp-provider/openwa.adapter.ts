@@ -148,6 +148,20 @@ export class OpenWAAdapter implements IWhatsAppProvider {
     return { ok: true, messageId: res?.messageId || res?.id || null };
   }
 
+  async getMediaBase64(
+    _companyId: string,
+    instanceOrSessionId: string,
+    messageObjOrId: any,
+  ): Promise<{ base64: string; mimetype?: string } | null> {
+    const rawId =
+      typeof messageObjOrId === "string"
+        ? messageObjOrId
+        : messageObjOrId?.id?._serialized || messageObjOrId?.id || messageObjOrId?.key?.id;
+    if (!rawId || typeof rawId !== "string") return null;
+    const { openwaGetMedia } = await import("./openwa.server");
+    return openwaGetMedia(instanceOrSessionId, rawId);
+  }
+
   async sendPresence(
     _companyId: string,
     instanceOrSessionId: string,

@@ -84,19 +84,26 @@ export async function geminiTranscribeAudio(base64: string, mimetype?: string): 
         ],
       },
     ],
+    // Transcrição não precisa de raciocínio: desligar o thinking reduz a latência.
+    generationConfig: { thinkingConfig: { thinkingBudget: 0 } },
   };
-  // Mesma resiliência do chat: repete se a Google estiver sobrecarregada e cai no lite.
-  const attempts = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  // A transcrição precisa sair na hora: cada tentativa tem timeout curto (a Google chega a segurar
+  // 60s antes de devolver 503) e o lite vem primeiro por ser o mais rápido. A cota é por modelo,
+  // então alternar também contorna um 429 momentâneo.
+  const attempts = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  const deadline = Date.now() + 40_000;
   for (let i = 0; i < attempts.length; i++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 1000) break;
     try {
-      const res = await geminiFetch(key, attempts[i], body);
+      const res = await geminiFetch(key, attempts[i], body, AbortSignal.timeout(Math.min(15_000, remaining)));
       if (res.ok) return geminiText(await res.json());
-      console.warn("[gemini.transcribe]", res.status, (await res.text().catch(() => "")).slice(0, 160));
+      console.warn("[gemini.transcribe]", attempts[i], res.status, (await res.text().catch(() => "")).slice(0, 160));
       if (!GEMINI_RETRYABLE.has(res.status)) return "";
     } catch (e: any) {
-      console.warn("[gemini.transcribe]", e?.message);
+      console.warn("[gemini.transcribe]", attempts[i], e?.name === "TimeoutError" ? "timeout" : e?.message);
     }
-    if (i < attempts.length - 1) await sleep(i === 0 ? 500 : 1200);
+    if (i < attempts.length - 1) await sleep(400);
   }
   return "";
 }
@@ -206,11 +213,12 @@ async function anthropicChat(key: string, model: string, messages: ChatMsg[]): P
 const GEMINI_RETRYABLE = new Set([429, 500, 502, 503, 504]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function geminiFetch(key: string, model: string, body: any) {
+function geminiFetch(key: string, model: string, body: any, signal?: AbortSignal) {
   return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify(body),
+    signal,
   });
 }
 

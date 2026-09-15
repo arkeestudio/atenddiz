@@ -194,6 +194,19 @@ export async function openwaSendVoice(sessionId: string, number: string, base64A
   });
 }
 
+export async function openwaGetMedia(sessionId: string, messageId: string): Promise<{ base64: string; mimetype?: string } | null> {
+  try {
+    const res = await openwaFetch<{ base64?: string; mimetype?: string }>(
+      `/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/media`,
+      { method: "GET" },
+    );
+    return res?.base64 ? { base64: res.base64, mimetype: res.mimetype } : null;
+  } catch (e: any) {
+    console.warn("[openwa.getMedia]", e?.message || e);
+    return null;
+  }
+}
+
 export async function openwaSendPresence(sessionId: string, number: string, presence: "composing" | "paused" | "available", delayMs = 1500) {
   try {
     const chatId = number.includes("@") ? number : `${number.replace(/\D/g, "")}@c.us`;

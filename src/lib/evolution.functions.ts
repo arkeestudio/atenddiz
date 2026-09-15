@@ -181,11 +181,7 @@ export const sendWhatsappText = createServerFn({ method: "POST" })
       direcao: "saida", autor: "humano", texto: data.texto,
     }).select("*").single();
     if (error) throw new Error(error.message);
-    // Pause IA on this contact (humano assumed)
-    await supabase.from("contact_pause").upsert(
-      { company_id: companyId, user_id: userId, numero: data.numero, pausado: true },
-      { onConflict: "company_id,numero" },
-    );
+    // Envio manual não pausa a IA: só "Assumir", o switch IA ou o pedido do cliente pausam.
     return { ok: true, mensagem: inserted ?? null };
   });
 
@@ -202,11 +198,12 @@ export const sendWhatsappMedia = createServerFn({ method: "POST" })
       .from("whatsapp_instances").select("instance_name,status").eq("company_id", companyId).maybeSingle();
     if (!inst?.instance_name) throw new Error("WhatsApp não conectado");
 
+    let sent: any = null;
     try {
       if (data.isVoice && provider.sendVoice) {
-        await provider.sendVoice(companyId, inst.instance_name, data.numero, data.base64);
+        sent = await provider.sendVoice(companyId, inst.instance_name, data.numero, data.base64);
       } else if (provider.sendMedia) {
-        await provider.sendMedia(companyId, inst.instance_name, data.numero, data.base64, data.caption);
+        sent = await provider.sendMedia(companyId, inst.instance_name, data.numero, data.base64, data.caption);
       } else {
         throw new Error("Envio de mídia não suportado no provedor atual");
       }
@@ -214,19 +211,20 @@ export const sendWhatsappMedia = createServerFn({ method: "POST" })
       throw new Error(`Falha ao enviar mídia: ${e?.message ?? e}`);
     }
 
-    const mediaText = data.isVoice ? "🎤 [Nota de Voz]" : `📎 [Arquivo: ${data.filename || "Mídia"}] ${data.caption || ""}`.trim();
+    // Nota de voz entra como "transcrevendo"; a tela chama transcribeAudioMessage logo em seguida.
+    const { AUDIO_ENVIADO, audioPendingText } = await import("./audio-labels");
+    const mediaText = data.isVoice
+      ? audioPendingText(AUDIO_ENVIADO)
+      : `📎 [Arquivo: ${data.filename || "Mídia"}] ${data.caption || ""}`.trim();
 
+    const messageId = typeof sent?.messageId === "string" ? sent.messageId : null;
     const { data: inserted, error } = await supabase.from("mensagens").insert({
       company_id: companyId, user_id: userId, numero: data.numero,
       contato_nome: data.contatoNome ?? null,
       direcao: "saida", autor: "humano", texto: mediaText,
+      whatsapp_message_id: messageId,
     }).select("*").single();
     if (error) throw new Error(error.message);
-
-    await supabase.from("contact_pause").upsert(
-      { company_id: companyId, user_id: userId, numero: data.numero, pausado: true },
-      { onConflict: "company_id,numero" },
-    );
     return { ok: true, mensagem: inserted ?? null };
   });
 
@@ -262,7 +260,56 @@ export const setContactIaActive = createServerFn({ method: "POST" })
       { onConflict: "company_id,numero" },
     );
     if (error) throw new Error(error.message);
-    return { ok: true };
+    if (!data.ativa) return { ok: true };
+
+    // Religou a IA: se o cliente está esperando resposta, a IA responde a mensagem pendente.
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const admin = supabaseAdmin as any;
+      const { data: last } = await admin
+        .from("mensagens")
+        .select("direcao, autor, texto, contato_nome")
+        .eq("company_id", companyId)
+        .eq("numero", data.numero)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!last || last.direcao !== "entrada" || last.autor !== "contato" || !last.texto?.trim()) {
+        return { ok: true };
+      }
+
+      const { data: inst } = await admin
+        .from("whatsapp_instances")
+        .select("instance_name, user_id, status")
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (!inst?.instance_name || inst.status !== "connected") return { ok: true };
+
+      const { data: cfg } = await admin.from("agent_config").select("*").eq("company_id", companyId).maybeSingle();
+      const horarios = cfg?.horarios_atendimento;
+      if (horarios?.enabled) {
+        const { isWithinBusinessHours } = await import("@/lib/business-hours");
+        if (!isWithinBusinessHours(horarios)) return { ok: true };
+      }
+
+      const { runAiReply, loadCrmStages } = await import("./ai-reply.server");
+      const stages = await loadCrmStages(admin, companyId);
+      const result = await runAiReply({
+        admin,
+        companyId,
+        userId: inst.user_id || userId,
+        instanceName: inst.instance_name,
+        number: data.numero,
+        pushName: last.contato_nome ?? undefined,
+        text: last.texto,
+        stages,
+        cfg,
+      });
+      return { ok: true, respostaPendente: result };
+    } catch (e: any) {
+      console.error("[ia-reativada resposta pendente]", e?.message);
+      return { ok: true };
+    }
   });
 
 export const getWhatsappSettings = createServerFn({ method: "GET" })
@@ -401,22 +448,42 @@ Responda em português (PT-BR) de forma objetiva no seguinte formato markdown:
 
 export const transcribeAudioMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { messageId?: string; texto?: string }) => d)
+  // `base64`: áudio já disponível na tela (nota recém-gravada), evita baixar do WhatsApp.
+  .inputValidator((d: { messageId?: string; texto?: string; base64?: string }) => d)
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     const companyId = await resolveCompanyId(supabase, userId);
+    if (!data.messageId) throw new Error("Mensagem de áudio não informada.");
 
-    const transcricao = "Áudio processado pela IA: Cliente solicitando informações sobre valores e confirmação de atendimento.";
-
-    if (data.messageId) {
-      await supabase
-        .from("mensagens")
-        .update({ texto: `🎤 [Áudio] 📝 Transcrição: "${transcricao}"` })
-        .eq("id", data.messageId)
-        .eq("company_id", companyId);
+    const { data: row } = await (supabase as any)
+      .from("mensagens")
+      .select("id, direcao, whatsapp_message_id")
+      .eq("id", data.messageId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (!row) throw new Error("Mensagem não encontrada.");
+    if (!data.base64 && !row.whatsapp_message_id) {
+      throw new Error("Este áudio não tem referência no WhatsApp para ser baixado.");
     }
 
-    return { transcricao };
+    const { data: inst } = await supabase
+      .from("whatsapp_instances").select("instance_name").eq("company_id", companyId).maybeSingle();
+    if (!data.base64 && !inst?.instance_name) throw new Error("WhatsApp não conectado");
+
+    const { transcribeAndUpdateMessage, AUDIO_RECEBIDO, AUDIO_ENVIADO, audioTranscribedText } = await import("./audio-transcription.server");
+    const label = row.direcao === "saida" ? AUDIO_ENVIADO : AUDIO_RECEBIDO;
+    const transcricao = await transcribeAndUpdateMessage({
+      db: supabase,
+      companyId,
+      messageId: row.id,
+      label,
+      instanceName: inst?.instance_name,
+      whatsappMedia: row.whatsapp_message_id,
+      base64: data.base64,
+    });
+    if (!transcricao) throw new Error("A IA não conseguiu transcrever este áudio. Tente novamente em instantes.");
+
+    return { transcricao, texto: audioTranscribedText(label, transcricao) };
   });
 
 

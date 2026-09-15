@@ -16,6 +16,7 @@ import { sendCsat } from "@/lib/csat.functions";
 import { toast } from "sonner";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { sendWhatsappText, sendWhatsappMedia, sendInternalNote, setContactIaActive, summarizeConversation, transcribeAudioMessage } from "@/lib/evolution.functions";
+import { AUDIO_ENVIADO, TRANSCREVENDO, audioPendingText } from "@/lib/audio-labels";
 import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner, forwardLeadSummaryManual } from "@/lib/chat-copilot.functions";
 import { markConversationSeen, sendTypingPresence } from "@/lib/whatsapp.functions";
 import { LeadDrawer, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
@@ -365,11 +366,7 @@ function ConversasPage() {
     try {
       toast.info("Transcrevendo áudio com IA...");
       const res = await transcribeFn({ data: { messageId: msgId, texto: currentText } });
-      setMsgs((prev) =>
-        prev.map((m) =>
-          m.id === msgId ? { ...m, texto: `🎤 [Áudio] 📝 Transcrição: "${res.transcricao}"` } : m
-        )
-      );
+      setMsgs((prev) => prev.map((m) => (m.id === msgId ? { ...m, texto: res.texto } : m)));
       toast.success("Áudio transcrito!");
     } catch (e: any) {
       toast.error(e?.message || "Erro na transcrição");
@@ -679,18 +676,33 @@ function ConversasPage() {
         const tempId = `${OPTIMISTIC_PREFIX}${crypto.randomUUID()}`;
         const optimistic: Msg = {
           id: tempId, numero: active, contato_nome: activeConv?.nome ?? null,
-          direcao: "saida", autor: "humano", texto: "🎤 [Nota de Voz]",
+          direcao: "saida", autor: "humano", texto: audioPendingText(AUDIO_ENVIADO),
           created_at: new Date().toISOString(), user_id: userId, status_entrega: null,
         };
         setMsgs((p) => [optimistic, ...p].slice(0, 500));
+        let sentMsg: Msg | null = null;
         try {
           const res: any = await sendMediaFn({
             data: { numero: active, base64, isVoice: true, contatoNome: activeConv?.nome ?? null }
           });
-          if (res?.mensagem) applyIncoming(res.mensagem as Msg);
+          sentMsg = (res?.mensagem as Msg) ?? null;
+          setMsgs((p) => p.filter((x) => x.id !== tempId));
+          if (sentMsg) applyIncoming(sentMsg);
           toast.success("Áudio enviado!");
         } catch (e: any) {
+          setMsgs((p) => p.filter((x) => x.id !== tempId));
           toast.error(e?.message || "Falha ao enviar áudio");
+          return;
+        }
+        // Transcreve na hora com o próprio áudio gravado (sem baixar do WhatsApp).
+        if (sentMsg?.id) {
+          const sentId = sentMsg.id;
+          try {
+            const tr = await transcribeFn({ data: { messageId: sentId, base64 } });
+            setMsgs((p) => p.map((x) => (x.id === sentId ? { ...x, texto: tr.texto } : x)));
+          } catch {
+            setMsgs((p) => p.map((x) => (x.id === sentId ? { ...x, texto: AUDIO_ENVIADO } : x)));
+          }
         }
       };
       reader.readAsDataURL(blob);
@@ -1521,7 +1533,9 @@ function Bubble({
   const ia = m.autor === "ia";
   const displayText = isInternal ? m.texto.replace("🔒 [NOTA INTERNA]:", "").trim() : m.texto;
   const isAudio = m.texto.includes("[Áudio]") || m.texto.includes("[Audio]") || m.texto.startsWith("🎤");
-  const hasTranscription = m.texto.includes("📝 Transcrição:");
+  // Transcrição em andamento esconde o botão; se ficou presa (>2 min), o botão volta para tentar de novo.
+  const transcrevendo = m.texto.includes(TRANSCREVENDO) && Date.now() - new Date(m.created_at).getTime() < 120_000;
+  const hasTranscription = m.texto.includes("📝 Transcrição:") || transcrevendo;
   const isReceipt = m.texto.includes("[Comprovante de Pagamento Recebido:");
 
   // Detecta URLs de imagem no texto

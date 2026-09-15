@@ -8,8 +8,8 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const payload: any = await request.json().catch(() => ({}));
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const { getWhatsAppProvider } = await import("@/lib/whatsapp-provider");
-          const { lovableAiChat } = await import("@/lib/lovable-ai.server");
-          const { buildSystemPrompt, parseAiOutput } = await import("@/lib/ai-prompt");
+          const { runAiReply, upsertCard, loadCrmStages } = await import("@/lib/ai-reply.server");
+          const { transcribeAndUpdateMessage, audioPendingText, AUDIO_RECEBIDO, AUDIO_ENVIADO } = await import("@/lib/audio-transcription.server");
 
           const event: string | undefined = payload?.event;
           const instanceName: string | undefined =
@@ -86,17 +86,20 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             data?.contact?.name ||
             data?.contact?.formattedName;
           const msg = data?.message ?? {};
+          const audioMsg = msg.audioMessage || (data?.type === "ptt" || data?.type === "audio" ? data : null);
+          const imageMsg = msg.imageMessage || (data?.type === "image" || (data?.mimetype && String(data.mimetype).startsWith("image/")) ? data : null);
+          // No OpenWA o `body` de mídia é o conteúdo/miniatura em base64, não texto: usa só a legenda.
+          const isOpenwaMedia = !data?.message && (audioMsg || imageMsg);
           let text: string =
             msg.conversation ||
             msg.extendedTextMessage?.text ||
             msg.imageMessage?.caption ||
             msg.videoMessage?.caption ||
-            data?.body ||
+            (isOpenwaMedia ? data?.caption : data?.body) ||
             data?.text ||
             data?.content ||
             "";
-          const audioMsg = msg.audioMessage || (data?.type === "ptt" || data?.type === "audio" ? data : null);
-          const imageMsg = msg.imageMessage || (data?.type === "image" || (data?.mimetype && String(data.mimetype).startsWith("image/")) ? data : null);
+          if (audioMsg) text = "";
           if ((!text || !text.trim()) && !audioMsg && !imageMsg) return new Response("no text", { status: 200 });
 
           const { data: inst } = await (supabaseAdmin as any)
@@ -112,12 +115,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const userId = (inst as any).user_id as string;
 
           // Carrega etapas da company para atualizar o card
-          const { data: stagesRows } = await supabaseAdmin
-            .from("crm_stage")
-            .select("id, nome, tipo, ordem")
-            .eq("company_id", companyId)
-            .order("ordem", { ascending: true });
-          const stages = (stagesRows ?? []) as Array<{ id: string; nome: string; tipo: "normal" | "ganho" | "perda" }>;
+          const stages = await loadCrmStages(supabaseAdmin, companyId);
 
           // Mensagem enviada pelo próprio usuário via celular: salva no banco e atualiza card
           if (fromMe) {
@@ -131,36 +129,46 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               if (duplicate) return new Response("duplicate", { status: 200 });
             }
 
-            await (supabaseAdmin as any).from("mensagens").insert({
-              company_id: companyId,
-              user_id: userId,
-              numero: number,
-              contato_nome: pushName ?? null,
-              direcao: "saida",
-              autor: "humano",
-              texto: text,
-              whatsapp_message_id: whatsappMessageId,
-            });
+            const { data: fromMeRow } = await (supabaseAdmin as any)
+              .from("mensagens")
+              .insert({
+                company_id: companyId,
+                user_id: userId,
+                numero: number,
+                contato_nome: pushName ?? null,
+                direcao: "saida",
+                autor: "humano",
+                texto: text || (audioMsg ? audioPendingText(AUDIO_ENVIADO) : imageMsg ? "📎 [Imagem]" : ""),
+                whatsapp_message_id: whatsappMessageId,
+              })
+              .select("id")
+              .maybeSingle();
 
-            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text || (audioMsg ? AUDIO_ENVIADO : "📎 [Imagem]"), stages);
+
+            // Nota de voz enviada pelo celular também é transcrita na hora.
+            if (audioMsg && fromMeRow?.id) {
+              await transcribeAndUpdateMessage({
+                db: supabaseAdmin, companyId, messageId: fromMeRow.id, label: AUDIO_ENVIADO,
+                instanceName, whatsappMedia: { key, message: msg, ...data },
+              });
+            }
             return new Response("fromMe-saved", { status: 200 });
           }
 
-          // Nota de voz -> transcreve com Gemini para a IA entender e responder.
-          if ((!text || !text.trim()) && audioMsg) {
-            try {
-              const provider = getWhatsAppProvider();
-              if (provider.getMediaBase64) {
-                const media = await provider.getMediaBase64(companyId, instanceName, { key, message: msg, ...data });
-                if (media?.base64) {
-                  const { geminiTranscribeAudio } = await import("@/lib/lovable-ai.server");
-                  const transcript = await geminiTranscribeAudio(media.base64, media.mimetype);
-                  if (transcript) text = transcript;
-                }
-              }
-            } catch (e: any) { console.error("[audio transcribe]", e?.message); }
-            if (!text || !text.trim()) return new Response("no audio text", { status: 200 });
+          // Checa duplicata antes de baixar/transcrever mídia (o sync-chats reenvia mensagens antigas).
+          if (whatsappMessageId) {
+            const { data: duplicate } = await (supabaseAdmin as any)
+              .from("mensagens")
+              .select("id")
+              .eq("company_id", companyId)
+              .eq("whatsapp_message_id", whatsappMessageId)
+              .maybeSingle();
+            if (duplicate) return new Response("duplicate", { status: 200 });
           }
+
+          // Nota de voz: salva na hora como "transcrevendo" e transcreve logo após o insert.
+          if (audioMsg) text = audioPendingText(AUDIO_RECEBIDO);
 
           let isReceipt = false;
           let receiptAnalysis: any = null;
@@ -190,16 +198,6 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             if (!text || !text.trim()) return new Response("no image text", { status: 200 });
           }
 
-          if (whatsappMessageId) {
-            const { data: duplicate } = await (supabaseAdmin as any)
-              .from("mensagens")
-              .select("id")
-              .eq("company_id", companyId)
-              .eq("whatsapp_message_id", whatsappMessageId)
-              .maybeSingle();
-            if (duplicate) return new Response("duplicate", { status: 200 });
-          }
-
           const insertedAt = new Date().toISOString();
           const { data: inserted } = await (supabaseAdmin as any)
             .from("mensagens")
@@ -217,6 +215,22 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             .select("id, created_at")
             .maybeSingle();
           const myCreatedAt = inserted?.created_at || insertedAt;
+
+          // A transcrição atualiza a mensagem (a tela recebe pelo realtime) e vira o texto que a IA responde.
+          // Sem transcrição o áudio fica salvo como "🎤 [Áudio]" para o atendente, sem resposta da IA.
+          if (audioMsg) {
+            const transcript = inserted?.id
+              ? await transcribeAndUpdateMessage({
+                  db: supabaseAdmin, companyId, messageId: inserted.id, label: AUDIO_RECEBIDO,
+                  instanceName, whatsappMedia: { key, message: msg, ...data },
+                })
+              : "";
+            if (!transcript) {
+              await upsertCard(supabaseAdmin, companyId, userId, number, pushName, AUDIO_RECEBIDO, stages);
+              return new Response("audio-sem-transcricao", { status: 200 });
+            }
+            text = transcript;
+          }
 
           // Dispara webhooks externos (best-effort, não bloqueia)
           try {
@@ -237,7 +251,6 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             }
           } catch {}
 
-
           const { data: cfg } = await supabaseAdmin
             .from("agent_config")
             .select("*")
@@ -247,19 +260,6 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const palavraPausar = (cfg?.palavra_pausar || "/pausar").toLowerCase().trim();
           const palavraDespausar = (cfg?.palavra_despausar || "/despausar").toLowerCase().trim();
           const lower = text.toLowerCase().trim();
-
-          const { data: produtosRows } = await supabaseAdmin
-            .from("produto")
-            .select("nome, preco, descricao, imagem_url, ativo, ordem")
-            .eq("company_id", companyId)
-            .eq("ativo", true)
-            .order("ordem", { ascending: true });
-          const produtos = (produtosRows ?? []).map((p: any) => ({
-            nome: p.nome,
-            preco: p.preco,
-            descricao: p.descricao,
-            imagem_url: (p as any).imagem_url ?? null,
-          }));
 
           const provider = getWhatsAppProvider();
 
@@ -409,227 +409,10 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             return new Response("superseded", { status: 200 });
           }
 
-          const { data: humanRecent } = await supabaseAdmin
-            .from("mensagens")
-            .select("id, created_at, autor")
-            .eq("company_id", companyId)
-            .eq("numero", number)
-            .eq("direcao", "saida")
-            .eq("autor", "humano")
-            .gte("created_at", new Date(Date.now() - 90_000).toISOString())
-            .limit(1);
-          if (humanRecent && humanRecent.length > 0) {
-            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
-            return new Response("human-active", { status: 200 });
-          }
-
-          const { data: histDesc } = await supabaseAdmin
-            .from("mensagens")
-            .select("autor,direcao,texto,created_at")
-            .eq("company_id", companyId)
-            .eq("numero", number)
-            .order("created_at", { ascending: false })
-            .limit(25);
-          const historico = (histDesc ?? []).slice().reverse();
-
-          const { data: cardRow } = await supabaseAdmin
-            .from("crm_cards")
-            .select("status, nome, stage_id")
-            .eq("company_id", companyId)
-            .eq("numero", number)
-            .maybeSingle();
-          const estagioAtual = cardRow?.status || stages[0]?.nome || "Conversas";
-          const resumoContato = `${cardRow?.nome || pushName || "Contato"} (${number}), ${historico.length} mensagens trocadas`;
-
-          const { data: googleIntegration } = await supabaseAdmin
-            .from("google_integration")
-            .select("conectado")
-            .eq("company_id", companyId)
-            .maybeSingle();
-
-          const responderEmPartes = cfg?.responder_em_partes ?? true;
-          const system = buildSystemPrompt(cfg ?? {}, {
-            responderEmPartes,
-            estagioAtual,
-            resumoContato,
-            produtos,
-            stages: stages.map((s) => ({ nome: s.nome, tipo: s.tipo })),
-            googleConectado: !!googleIntegration?.conectado,
+          const result = await runAiReply({
+            admin: supabaseAdmin, companyId, userId, instanceName, number, pushName, text, stages, cfg, isReceipt, receiptAnalysis,
           });
-
-          const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-            { role: "system", content: system },
-            ...historico.map((m) => ({
-              role: (m.direcao === "entrada" ? "user" : "assistant") as "user" | "assistant",
-              content: m.texto,
-            })),
-          ];
-          if (!messages.length || messages[messages.length - 1].role !== "user") {
-            messages.push({ role: "user", content: text });
-          }
-
-          // Enforcement de créditos: cada resposta da IA consome 1 crédito.
-          // Se zerou, a IA não responde — exige assinatura/recarga.
-          const { getCompanyPlan } = await import("@/lib/plan-limits.server");
-          const { allowsProvider } = await import("@/lib/plan-features");
-          const { data: hasCredit } = await supabaseAdmin.rpc("consume_ai_credit", {
-            _company_id: companyId,
-            _ref: number,
-          });
-          if (!hasCredit) {
-            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
-            console.warn("[credits] créditos esgotados — IA não respondeu", companyId);
-            return new Response("no_credits", { status: 200 });
-          }
-          const throttleReason = await getAiThrottleReason(supabaseAdmin, companyId, number);
-          if (throttleReason) {
-            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
-            console.warn("[whatsapp.safety] resposta pausada", throttleReason, companyId, number);
-            return new Response(throttleReason, { status: 200 });
-          }
-          const plan = await getCompanyPlan(companyId);
-          let providerChoice = ((cfg as any)?.ai_provider || "gemini") as string;
-          let modelChoice = ((cfg as any)?.ai_model || "google/gemini-2.5-flash") as string;
-          if (!allowsProvider(plan.slug, providerChoice)) {
-            providerChoice = "gemini";
-            modelChoice = "google/gemini-2.5-flash";
-          }
-
-          let rawReply = "";
-          try {
-            rawReply = await lovableAiChat(messages, {
-              provider: providerChoice,
-              model: modelChoice,
-              openaiKey: (cfg as any)?.openai_api_key || "",
-              anthropicKey: (cfg as any)?.anthropic_api_key || "",
-            });
-          } catch (e: any) {
-            console.error("[ai]", e?.message);
-          }
-
-          const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
-          const finalParts = sanitizeAiParts(responderEmPartes ? parts : [parts.join(" ")]);
-
-          // Transbordo inteligente acionado pela própria IA
-          if (encaminharHumano) {
-            try {
-              const { generateAndForwardLeadSummary } = await import("@/lib/lead-handover.server");
-              generateAndForwardLeadSummary({
-                supabase: supabaseAdmin,
-                companyId,
-                userId,
-                leadNumber: number,
-                leadName: pushName,
-                reason: encaminharHumano,
-                stageName: stage || estagioAtual,
-              }).catch((err) => console.error("[lead-handover ai forward error]", err?.message));
-            } catch (e: any) {
-              console.error("[lead-handover import error]", e?.message);
-            }
-          }
-
-          // Gera PIX Copia e Cola instantâneo se a IA definiu valor de pagamento
-          const chavePix = (cfg as any)?.chave_pix;
-          if (pixValor && chavePix) {
-            try {
-              const { generatePixCopyPaste } = await import("@/lib/pix");
-              const pixCode = generatePixCopyPaste({
-                chave: chavePix,
-                nome: (cfg as any)?.titular_pix || (cfg as any)?.nome_empresa || "Atendimento",
-                cidade: (cfg as any)?.cidade_pix || "BRASIL",
-                valor: pixValor,
-                infoAdicional: "Pedido WhatsApp",
-              });
-              finalParts.push(
-                `📋 *PIX Copia e Cola* (Toque no código abaixo para copiar):\n\n\`\`\`${pixCode}\`\`\`\n\n_Após realizar o pagamento, basta enviar o comprovante aqui para confirmação imediata!_ ⚡`
-              );
-            } catch (e: any) {
-              console.error("[generatePixCopyPaste]", e?.message);
-            }
-          }
-
-          // Envia foto do produto se a IA marcou [ENVIAR_FOTO: url]
-          if (fotoUrl && provider.sendMedia) {
-            try {
-              await provider.sendMedia(companyId, instanceName, number, fotoUrl, "Foto do produto");
-              await supabaseAdmin.from("mensagens").insert({
-                company_id: companyId,
-                user_id: userId,
-                numero: number,
-                contato_nome: pushName ?? null,
-                direcao: "saida",
-                autor: "ia",
-                texto: `📸 [Foto do Produto: ${fotoUrl}]`,
-                status_entrega: "enviado",
-              } as any);
-              await new Promise((r) => setTimeout(r, 1200));
-            } catch (e: any) {
-              console.error("[sendMedia foto]", e?.message);
-            }
-          }
-
-          // Cria evento no Google Agenda se a IA marcou [AGENDAR: ...]
-          if (agendar && googleIntegration?.conectado) {
-            try {
-              const { createCalendarEventForCompany } = await import("@/lib/google.server");
-              await createCalendarEventForCompany(supabaseAdmin, companyId, {
-                titulo: agendar.titulo,
-                inicio: agendar.inicio,
-                fim: agendar.fim,
-                descricao: `Agendado via WhatsApp — ${pushName || number}`,
-              });
-            } catch (e: any) {
-              console.error("[agendar]", e?.message);
-            }
-          }
-
-          for (let i = 0; i < finalParts.length; i++) {
-            const part = finalParts[i];
-            if (!part) continue;
-            try {
-              const typingMs = Math.min(3000, 1200 + Math.floor(part.length * 35));
-              if (provider.sendPresence) {
-                await provider.sendPresence(companyId, instanceName, number, "composing", typingMs);
-              }
-              await new Promise((r) => setTimeout(r, typingMs));
-              const sent: any = await provider.sendText(companyId, instanceName, number, part);
-              await supabaseAdmin.from("mensagens").insert({
-                company_id: companyId,
-                user_id: userId,
-                numero: number,
-                contato_nome: pushName ?? null,
-                direcao: "saida",
-                autor: "ia",
-                texto: part,
-                whatsapp_message_id: sent?.messageId ?? null,
-                status_entrega: "enviado",
-              } as any);
-              if (i < finalParts.length - 1) {
-                await new Promise((r) => setTimeout(r, 700 + Math.floor(Math.random() * 800)));
-              }
-            } catch (e: any) {
-              console.error("[send]", e?.message);
-            }
-          }
-
-          const stageGanho = stages.find((s) => s.tipo === "ganho")?.nome;
-          await upsertCard(
-            supabaseAdmin,
-            companyId,
-            userId,
-            number,
-            pushName,
-            finalParts[finalParts.length - 1] || text,
-            stages,
-            isReceipt && stageGanho ? stageGanho : stage,
-            {
-              valor: receiptAnalysis?.valor ? Number(receiptAnalysis.valor) : (pixValor || undefined),
-              isReceipt: !!isReceipt,
-              observacao: receiptAnalysis?.resumo ? `Comprovante validado por IA: ${receiptAnalysis.resumo}` : undefined,
-            },
-          );
-
-          return new Response("ok", { status: 200 });
+          return new Response(result, { status: 200 });
         } catch (e: any) {
           console.error("[webhook]", e?.message, e?.stack);
           return new Response("error", { status: 200 });
@@ -738,119 +521,5 @@ async function handleMessageAck(admin: any, instanceName: string, suppliedToken:
     if (!row) continue;
     if ((rank[mapped] ?? 0) < (rank[row.status_entrega as string] ?? -1)) continue;
     await admin.from("mensagens").update({ status_entrega: mapped }).eq("id", row.id);
-  }
-}
-
-function sanitizeAiParts(parts: string[]) {
-  return parts
-    .map((part) => part.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .map((part) => (part.length > 700 ? `${part.slice(0, 697).trim()}...` : part))
-    .slice(0, 2);
-}
-
-async function getAiThrottleReason(admin: any, companyId: string, numero: string): Promise<string | null> {
-  const now = Date.now();
-  const [contactRecent, companyRecent] = await Promise.all([
-    admin
-      .from("mensagens")
-      .select("id", { count: "exact", head: true })
-      .eq("company_id", companyId)
-      .eq("numero", numero)
-      .eq("direcao", "saida")
-      .eq("autor", "ia")
-      .gte("created_at", new Date(now - 10 * 60_000).toISOString()),
-    admin
-      .from("mensagens")
-      .select("id", { count: "exact", head: true })
-      .eq("company_id", companyId)
-      .eq("direcao", "saida")
-      .eq("autor", "ia")
-      .gte("created_at", new Date(now - 60_000).toISOString()),
-  ]);
-
-  if ((contactRecent.count ?? 0) >= 6) return "contact-rate-limit";
-  if ((companyRecent.count ?? 0) >= 20) return "company-rate-limit";
-  return null;
-}
-
-async function upsertCard(
-  admin: any,
-  companyId: string,
-  userId: string,
-  numero: string,
-  nome: string | undefined,
-  ultimaMensagem: string,
-  stages: Array<{ id: string; nome: string; tipo: "normal" | "ganho" | "perda" }>,
-  proposedStageName?: string | null,
-  extra?: { valor?: number; isReceipt?: boolean; observacao?: string },
-) {
-  const { data: existing } = await admin
-    .from("crm_cards")
-    .select("id, status, nome, stage_id, valor, observacao")
-    .eq("company_id", companyId)
-    .eq("numero", numero)
-    .maybeSingle();
-
-  const stageByName = new Map(stages.map((s) => [s.nome.toLowerCase(), s]));
-  const stageById = new Map(stages.map((s) => [s.id, s]));
-
-  const currentStage = existing?.stage_id ? stageById.get(existing.stage_id) : undefined;
-  const currentTipo = currentStage?.tipo ?? (existing?.status ? stageByName.get(String(existing.status).toLowerCase())?.tipo : undefined);
-  const isLocked = !extra?.isReceipt && (currentTipo === "ganho" || currentTipo === "perda");
-
-  const proposed = proposedStageName ? stageByName.get(proposedStageName.toLowerCase()) : undefined;
-
-  let finalStage = currentStage;
-  if (proposed && !isLocked) finalStage = proposed;
-  if (!finalStage) finalStage = stages[0];
-
-  let cardName = existing?.nome || null;
-  if (nome && nome.trim() && (!cardName || cardName === numero || /^\d+$/.test(cardName.replace(/\D/g, "")))) {
-    cardName = nome.trim();
-  }
-
-  const payload: any = {
-    company_id: companyId,
-    user_id: userId,
-    numero,
-    nome: cardName,
-    ultima_mensagem: ultimaMensagem.slice(0, 240),
-    ultima_em: new Date().toISOString(),
-  };
-  if (finalStage) {
-    payload.stage_id = finalStage.id;
-    payload.status = finalStage.nome;
-  } else if (existing?.status) {
-    payload.status = existing.status;
-  } else {
-    payload.status = "Conversas";
-  }
-
-  if (extra?.valor !== undefined && extra.valor > 0) {
-    payload.valor = extra.valor;
-  }
-  if (extra?.observacao) {
-    payload.observacao = extra.observacao;
-  }
-
-  const { data: savedCard } = await admin
-    .from("crm_cards")
-    .upsert(payload, { onConflict: "company_id,numero" })
-    .select("id")
-    .maybeSingle();
-
-  const cardId = savedCard?.id || existing?.id;
-  if (extra?.isReceipt && cardId && extra?.observacao) {
-    try {
-      await admin.from("lead_nota").insert({
-        company_id: companyId,
-        card_id: cardId,
-        autor_id: null,
-        texto: `🧾 [IA Vision] ${extra.observacao}${extra.valor ? ` — R$ ${Number(extra.valor).toFixed(2)}` : ""}`,
-      });
-    } catch (e: any) {
-      console.error("[lead_nota receipt]", e?.message);
-    }
   }
 }
