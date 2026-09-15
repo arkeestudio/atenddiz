@@ -25,7 +25,8 @@ export const Route = createFileRoute("/entrar")({
   ssr: false,
   head: () => ({ meta: [{ title: `${brand.name} — Começar` }] }),
   validateSearch: (s: Record<string, unknown>): Search => ({
-    modo: s.modo === "login" ? "login" : "signup",
+    // Padrão: login. O cadastro (fluxo de venda) só abre com ?modo=signup explícito.
+    modo: s.modo === "signup" ? "signup" : "login",
     plano: typeof s.plano === "string" ? s.plano : undefined,
   }),
   beforeLoad: async ({ search }) => {
@@ -61,6 +62,8 @@ function EntrarPage() {
   const [loading, setLoading] = useState(false);
 
   const planInfo = search.plano ? PLAN_LABEL[search.plano] : null;
+  // Textos de venda (painel lateral, "criar conta") só aparecem no fluxo de cadastro.
+  const modoVenda = search.modo === "signup";
 
   async function routeAfterAuth() {
     const { data: u } = await supabase.auth.getUser();
@@ -151,9 +154,9 @@ function EntrarPage() {
         />
       </div>
 
-      <div className="relative z-10 min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
+      <div className={`relative z-10 min-h-screen grid ${modoVenda ? "lg:grid-cols-[1.05fr_1fr]" : ""}`}>
         {/* LEFT — brand pane (hidden on mobile) */}
-        <aside className="hidden lg:flex flex-col justify-between p-10 xl:p-14 border-r border-[color:var(--hairline)] bg-[linear-gradient(160deg,rgba(22,163,74,.10),rgba(34,211,238,.04)_55%,transparent)]">
+        {modoVenda && <aside className="hidden lg:flex flex-col justify-between p-10 xl:p-14 border-r border-[color:var(--hairline)] bg-[linear-gradient(160deg,rgba(22,163,74,.10),rgba(34,211,238,.04)_55%,transparent)]">
           <div className="flex items-center gap-3">
             <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="size-4" />
@@ -198,12 +201,12 @@ function EntrarPage() {
           <div className="text-[12px] text-muted-foreground">
             © {new Date().getFullYear()} {brand.name}. Todos os direitos reservados.
           </div>
-        </aside>
+        </aside>}
 
         {/* RIGHT — form */}
         <main className="flex flex-col items-center justify-center px-5 py-10 sm:px-10">
           {/* Mobile brand header */}
-          <div className="lg:hidden w-full max-w-md mb-6 flex items-center justify-between">
+          <div className={`${modoVenda ? "lg:hidden " : ""}w-full max-w-md mb-6 flex items-center justify-between`}>
             <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
               <ArrowLeft className="size-4" /> voltar
             </Link>
@@ -295,7 +298,7 @@ function EntrarPage() {
                     </p>
                   )}
 
-                  <div className="text-center pt-2 border-t border-[color:var(--hairline)] mt-2">
+                  {modoVenda && <div className="text-center pt-2 border-t border-[color:var(--hairline)] mt-2">
                     {needsPassword ? (
                       <button
                         type="button"
@@ -315,7 +318,7 @@ function EntrarPage() {
                         <span className="font-semibold text-[color:var(--brand-text)]">Entrar</span>
                       </button>
                     )}
-                  </div>
+                  </div>}
                 </form>
               </div>
             </div>

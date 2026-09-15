@@ -21,10 +21,10 @@ export const startGoogleOAuth = createServerFn({ method: "POST" })
     if (!cu) return { ok: false as const, error: "Sem empresa." };
 
     const { getCompanyPlan } = await import("@/lib/plan-limits.server");
-    const { featuresFor, PLAN_LABEL } = await import("@/lib/plan-features");
+    const { featuresFor } = await import("@/lib/plan-features");
     const plan = await getCompanyPlan(cu.company_id);
     if (!featuresFor(plan.slug).googleCalendar) {
-      return { ok: false as const, error: `Google Agenda não está incluso no plano ${PLAN_LABEL[plan.slug]}. Faça upgrade para Pro.` };
+      return { ok: false as const, error: "Google Agenda não está liberado nesta conta." };
     }
 
     const origin = await buildOrigin();

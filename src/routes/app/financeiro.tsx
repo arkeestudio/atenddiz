@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Card } from "@/components/ui/card";
@@ -44,7 +44,7 @@ function FinanceiroPage() {
   }
 
   if (!status?.planoPermite) {
-    return <PlanGate planSlug={status?.planSlug} />;
+    return <PlanGate />;
   }
 
   if (!status.ativo) {
@@ -54,7 +54,7 @@ function FinanceiroPage() {
   return <FinanceiroContent diasVenc={status.diasVencimento} />;
 }
 
-function PlanGate({ planSlug }: { planSlug?: string }) {
+function PlanGate() {
   return (
     <div className="max-w-2xl mx-auto py-10">
       <Card className="p-8 text-center space-y-4">
@@ -63,16 +63,9 @@ function PlanGate({ planSlug }: { planSlug?: string }) {
         </div>
         <h1 className="text-2xl font-bold">Módulo Financeiro</h1>
         <p className="text-muted-foreground">
-          O controle financeiro está disponível nos planos <b>Pro</b> e <b>Business</b>.<br />
-          Seu plano atual é <Badge variant="secondary" className="capitalize">{planSlug ?? "starter"}</Badge>.
+          Não foi possível carregar o módulo agora. Recarregue a página.
         </p>
-        <ul className="text-sm text-left max-w-md mx-auto space-y-1.5 text-muted-foreground">
-          <li>✓ Contas a pagar e a receber</li>
-          <li>✓ Receita gerada automaticamente quando o CRM marca "Ganho"</li>
-          <li>✓ Fluxo de caixa, KPIs e categorias</li>
-          <li>✓ Lançamentos manuais com PIX/boleto/cartão</li>
-        </ul>
-        <Button asChild size="lg"><Link to="/app/checkout">Fazer upgrade</Link></Button>
+        <Button size="lg" onClick={() => window.location.reload()}>Recarregar</Button>
       </Card>
     </div>
   );

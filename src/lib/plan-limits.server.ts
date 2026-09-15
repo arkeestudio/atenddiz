@@ -94,14 +94,14 @@ export async function getCompanyPlanUsage(companyId: string): Promise<{ plan: Co
 }
 
 const LIMIT_MSG: Record<LimitKind, (planName: string, lim: number) => string> = {
-  instancias: (p, n) =>
-    `Seu plano ${p} permite até ${n} número${n === 1 ? "" : "s"} de WhatsApp. Faça upgrade para conectar mais.`,
-  usuarios: (p, n) =>
-    `Seu plano ${p} permite até ${n} usuário${n === 1 ? "" : "s"} na equipe. Faça upgrade para adicionar mais.`,
-  contatos: (p, n) =>
-    `Seu plano ${p} permite até ${n.toLocaleString("pt-BR")} contatos. Faça upgrade para cadastrar mais.`,
-  mensagens: (p, n) =>
-    `Seu plano ${p} permite até ${n.toLocaleString("pt-BR")} mensagens enviadas por mês. Faça upgrade para continuar respondendo.`,
+  instancias: (_p, n) =>
+    `Limite da conta: até ${n} número${n === 1 ? "" : "s"} de WhatsApp conectado${n === 1 ? "" : "s"}.`,
+  usuarios: (_p, n) =>
+    `Limite da conta: até ${n} usuário${n === 1 ? "" : "s"} na equipe.`,
+  contatos: (_p, n) =>
+    `Limite da conta: até ${n.toLocaleString("pt-BR")} contatos.`,
+  mensagens: (_p, n) =>
+    `Limite da conta: até ${n.toLocaleString("pt-BR")} mensagens enviadas por mês.`,
 };
 
 export async function assertWithinLimit(companyId: string, tipo: LimitKind, delta = 1): Promise<void> {

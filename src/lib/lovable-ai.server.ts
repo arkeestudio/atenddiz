@@ -16,6 +16,8 @@ export interface AiProviderConfig {
   openaiKey?: string;
   anthropicKey?: string;
   geminiKey?: string;
+  /** Conversas reais: se OpenAI/Anthropic falhar (crédito, chave, sobrecarga), responde com Gemini em vez de silenciar. */
+  fallbackToGemini?: boolean;
 }
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -30,18 +32,23 @@ export async function lovableAiChat(
       : modelOrConfig;
   const provider = (cfg.provider || "gemini").toLowerCase();
 
-  if (provider === "openai") {
-    const key = cfg.openaiKey?.trim();
-    if (!key) throw new Error("Chave OpenAI não configurada na sua empresa.");
-    const model = cfg.model || "gpt-4o-mini";
-    return openAiChat(key, model, messages);
-  }
-  if (provider === "anthropic") {
-    const key = cfg.anthropicKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
-    if (!key) {
-      throw new Error("Chave Anthropic (Claude) não configurada: defina ANTHROPIC_API_KEY no ambiente ou na sua empresa.");
+  if (provider === "openai" || provider === "anthropic") {
+    try {
+      if (provider === "openai") {
+        const key = cfg.openaiKey?.trim();
+        if (!key) throw new Error("Chave OpenAI não configurada na sua empresa.");
+        return await openAiChat(key, cfg.model || "gpt-4o-mini", messages);
+      }
+      const key = cfg.anthropicKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
+      if (!key) {
+        throw new Error("Chave Anthropic (Claude) não configurada: defina ANTHROPIC_API_KEY no ambiente ou na sua empresa.");
+      }
+      return await anthropicChat(key, resolveClaudeModel(cfg.model), messages);
+    } catch (error: any) {
+      if (!cfg.fallbackToGemini) throw error;
+      console.warn(`[ai] ${provider} falhou; respondendo com Gemini:`, error?.message);
+      return lovableAiChat(messages, { provider: "gemini", model: "google/gemini-2.5-flash", geminiKey: cfg.geminiKey });
     }
-    return anthropicChat(key, resolveClaudeModel(cfg.model), messages);
   }
   // default: Gemini (Google). Prioriza SUA chave direta; só cai no gateway do Lovable se não houver.
   const googleKey = cfg.geminiKey?.trim() || process.env.GEMINI_API_KEY?.trim();
@@ -229,7 +236,11 @@ async function anthropicChat(key: string, model: string, messages: ChatMsg[]): P
       throw new Error("Anthropic: limite de uso atingido. Tente em alguns minutos.");
     }
     if (error instanceof Anthropic.APIError) {
-      throw new Error(`Anthropic: ${error.status ?? ""} ${error.message}`.trim());
+      const detail: string = (error.error as any)?.error?.message || error.message;
+      if (/credit balance/i.test(detail)) {
+        throw new Error("Anthropic: créditos esgotados. Adicione créditos em console.anthropic.com → Plans & Billing.");
+      }
+      throw new Error(`Anthropic (${error.status ?? "erro"}): ${detail}`);
     }
     throw error;
   }

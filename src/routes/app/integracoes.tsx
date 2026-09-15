@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Copy, Webhook, KeyRound, Link2 } from "lucide-react";
 import { brand } from "@/config/brand";
-import { featuresFor } from "@/lib/plan-features";
+import { usePlanFeatures } from "@/hooks/use-plan-features";
 
 export const Route = createFileRoute("/app/integracoes")({
   head: () => ({ meta: [{ title: `${brand.name} — Integrações` }] }),
@@ -39,9 +39,9 @@ const EVENTS = [
 
 function IntegracoesPage() {
   const ctx = Route.useRouteContext();
-  const planSlug = (ctx.company as any)?.plan_slug || "starter";
-  const features = featuresFor(planSlug);
-  const isBusiness = planSlug === "business" || features.apiWebhooks;
+  // Plano vem da assinatura (servidor); a tabela company não tem plan_slug.
+  const plan = usePlanFeatures();
+  const isBusiness = plan.loading || plan.features.apiWebhooks;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -199,8 +199,8 @@ function ApiTab({ isBusiness }: { isBusiness: boolean }) {
   if (!isBusiness) {
     return <Card className="p-8 text-center">
       <KeyRound className="size-10 mx-auto mb-3 text-muted-foreground" />
-      <p className="font-medium">API pública disponível no plano Business</p>
-      <p className="text-sm text-muted-foreground">Faça upgrade para gerar tokens e acessar endpoints REST.</p>
+      <p className="font-medium">API pública indisponível no momento</p>
+      <p className="text-sm text-muted-foreground">Recarregue a página para tentar novamente.</p>
     </Card>;
   }
 

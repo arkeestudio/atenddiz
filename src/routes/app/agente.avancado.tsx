@@ -18,7 +18,6 @@ import { testAiReply } from "@/lib/evolution.functions";
 import { startGoogleOAuth, disconnectGoogle } from "@/lib/google.functions";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { usePlanFeatures } from "@/hooks/use-plan-features";
-import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/app/agente/avancado")({
   head: () => ({ meta: [{ title: `${brand.name} — Agente IA` }] }),
@@ -118,9 +117,10 @@ function AgentePage() {
   const gStart = useServerFn(startGoogleOAuth);
   const gDisc = useServerFn(disconnectGoogle);
   const plan = usePlanFeatures();
-  const allowOpenAI = plan.features.providersIA.includes("openai");
-  const allowAnthropic = plan.features.providersIA.includes("anthropic");
-  const allowGoogleCal = plan.features.googleCalendar;
+  // Enquanto o plano carrega, não bloqueia nada (evita piscar opções travadas).
+  const allowOpenAI = plan.loading || plan.features.providersIA.includes("openai");
+  const allowAnthropic = plan.loading || plan.features.providersIA.includes("anthropic");
+  const allowGoogleCal = plan.loading || plan.features.googleCalendar;
   const [cfg, setCfg] = useState<any>(DEFAULTS);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [google, setGoogle] = useState<any>(null);
@@ -258,17 +258,15 @@ function AgentePage() {
                     <SelectContent>
                       <SelectItem value="gemini">Google Gemini — incluso, sem custo extra</SelectItem>
                       <SelectItem value="openai" disabled={!allowOpenAI}>
-                        OpenAI (GPT) — sua chave{!allowOpenAI ? " · Pro/Business" : ""}
+                        OpenAI (GPT) — sua chave
                       </SelectItem>
                       <SelectItem value="anthropic" disabled={!allowAnthropic}>
-                        Anthropic (Claude){!allowAnthropic ? " · Pro/Business" : ""}
+                        Anthropic (Claude)
                       </SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Gemini é o padrão e já vem incluso. {(!allowOpenAI || !allowAnthropic) && (
-                      <>GPT e Claude exigem o plano Pro. <Link to="/app/checkout" className="underline">Fazer upgrade</Link>.</>
-                    )}
+                    Gemini é o padrão e já vem incluso.
                   </p>
                 </div>
 
@@ -327,6 +325,7 @@ function AgentePage() {
                   <Field label="Segmento" value={cfg.segmento} onChange={(v) => up("segmento", v)} />
                   <Field label="Região / horário de atendimento" value={cfg.regiao_horario} onChange={(v) => up("regiao_horario", v)} />
                 </div>
+                <Area label="Objetivo do agente (o que a IA deve conseguir em cada conversa)" value={cfg.papel_objetivo} onChange={(v) => up("papel_objetivo", v)} rows={2} />
                 <Area label="Descrição do negócio" value={cfg.descricao_negocio} onChange={(v) => up("descricao_negocio", v)} rows={3} />
                 <Area label="Diferenciais" value={cfg.diferenciais} onChange={(v) => up("diferenciais", v)} rows={2} />
                 <Area label="Público-alvo" value={cfg.publico_alvo} onChange={(v) => up("publico_alvo", v)} rows={2} />
@@ -552,7 +551,7 @@ function AgentePage() {
                       <p className="text-xs text-muted-foreground mt-1">Permite que a IA marque eventos automaticamente.</p>
                     </div>
                     {!allowGoogleCal ? (
-                      <Link to="/app/checkout" className="text-xs underline text-muted-foreground">Disponível no Pro</Link>
+                      <span className="text-xs text-muted-foreground">Indisponível</span>
                     ) : google?.conectado
                       ? <Button size="sm" variant="outline" onClick={disconnectG}>Desconectar</Button>
                       : <Button size="sm" onClick={connectGoogle}><LinkIcon className="size-3.5 mr-1" />Conectar</Button>}

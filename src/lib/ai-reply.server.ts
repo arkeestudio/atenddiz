@@ -46,7 +46,7 @@ export async function runAiReply(opts: {
 
   const { data: produtosRows } = await supabaseAdmin
     .from("produto")
-    .select("nome, preco, descricao, imagem_url, ativo, ordem")
+    .select("*") // "*" em vez de listar imagem_url: não quebra o catálogo se a coluna faltar no banco
     .eq("company_id", companyId)
     .eq("ativo", true)
     .order("ordem", { ascending: true });
@@ -136,6 +136,7 @@ export async function runAiReply(opts: {
       model: modelChoice,
       openaiKey: (cfg as any)?.openai_api_key || "",
       anthropicKey: (cfg as any)?.anthropic_api_key || "",
+      fallbackToGemini: true,
     });
   } catch (e: any) {
     console.error("[ai]", e?.message);

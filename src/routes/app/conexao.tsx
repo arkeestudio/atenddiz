@@ -12,8 +12,6 @@ import { toast } from "sonner";
 import { Loader2, RefreshCw, Power, QrCode, Flame } from "lucide-react";
 import { brand } from "@/config/brand";
 import { connectWhatsapp, checkWhatsappStatus, disconnectWhatsapp, getWhatsappSettings, setWhatsappWarmup } from "@/lib/evolution.functions";
-import { usePlanFeatures } from "@/hooks/use-plan-features";
-import { PlanUsageBadge } from "@/components/plan-usage-badge";
 
 export const Route = createFileRoute("/app/conexao")({
   head: () => ({ meta: [{ title: `${brand.name} — Conexão` }] }),
@@ -26,7 +24,6 @@ function ConexaoPage() {
   const disconnect = useServerFn(disconnectWhatsapp);
   const getSettings = useServerFn(getWhatsappSettings);
   const saveWarmup = useServerFn(setWhatsappWarmup);
-  const plan = usePlanFeatures();
 
   const [loading, setLoading] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
@@ -122,9 +119,6 @@ function ConexaoPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">Conexão WhatsApp <HelpTip text="Pareie seu número escaneando o QR Code no celular. Depois disso, o agente passa a responder automaticamente as mensagens recebidas." /></h1>
           <p className="text-sm text-muted-foreground">Conecte sua linha via OpenWA (WhatsApp Automate).</p>
         </div>
-        {!plan.loading && (
-          <PlanUsageBadge label="números" used={plan.usage.instancias} limit={plan.limites.instancias} />
-        )}
       </div>
 
 

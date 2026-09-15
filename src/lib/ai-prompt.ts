@@ -224,7 +224,9 @@ export function buildSystemPrompt(
     ? "CATÁLOGO DE PRODUTOS / SERVIÇOS (itens reais e preços):\n" +
       produtos
         .map((p) => {
-          const preco = p.preco !== undefined && p.preco !== null && p.preco !== "" ? ` — R$ ${p.preco}` : "";
+          // Preço zerado/vazio fica de fora: evita a IA repetir "R$ 0" (a descrição diz se é gratuito ou sob consulta).
+          const precoNum = Number(String(p.preco ?? "").replace(",", "."));
+          const preco = Number.isFinite(precoNum) && precoNum > 0 ? ` — R$ ${p.preco}` : "";
           const desc = p.descricao ? ` (${p.descricao})` : "";
           const foto = p.imagem_url ? ` [FOTO DISPONÍVEL: ${p.imagem_url}]` : "";
           return `• ${p.nome}${preco}${desc}${foto}`;
@@ -233,12 +235,17 @@ export function buildSystemPrompt(
       "\n\nREGRA DE ENVIO DE FOTO: Se o cliente pedir para ver o produto, pedir fotos ou demonstrar interesse em um item que possui [FOTO DISPONÍVEL: url], inclua exatamente [ENVIAR_FOTO: url] na sua resposta. O sistema enviará a foto automaticamente ao cliente!"
     : "";
 
+  // Marcadores como [nome] na apresentação viram o nome do agente.
+  const apresentacao = c.apresentacao?.replace(/\[\s*nome\s*\]|\{\s*nome\s*\}/gi, c.nome_agente || "assistente virtual");
+  // Instruções de PIX só fazem sentido se a empresa cadastrou chave (senão contradizem "não cobramos por WhatsApp").
+  const temPix = !!c.chave_pix?.trim();
+
   const stageNames = stages.map((s) => s.nome).join(" | ");
   const stagesFinaisNomes = stages.filter((s) => s.tipo === "ganho" || s.tipo === "perda").map((s) => s.nome);
 
   const blocos = [
     `Você é ${c.nome_agente || "um consultor de vendas virtual"}, atendendo no WhatsApp da empresa ${c.nome_empresa || "(empresa)"}.`,
-    c.apresentacao ? `Como se apresenta na primeira mensagem: ${c.apresentacao}` : "",
+    apresentacao ? `Como se apresenta na primeira mensagem: ${apresentacao}` : "",
     `Objetivo: ${c.papel_objetivo || "atender clientes com excelência, descobrir suas necessidades, recomendar produtos/serviços e fechar vendas de forma ativa e consultiva."}`,
     describeFoco(c.foco_atendimento),
     `Personalidade: ${personalidade}.`,
@@ -255,12 +262,18 @@ export function buildSystemPrompt(
           "4. Se o cliente solicitar compra ou contratação, forneça os valores e as instruções de forma tranquila e prestativa.",
         ]
       : [
-          "DIRETRIZES DE VENDAS E FECHAMENTO (VENDEDOR ATIVO):",
-          "1. NUNCA finalize uma mensagem de forma passiva como 'fico à disposição' ou 'qualquer dúvida me chame'. Conduza sempre com uma pergunta de fechamento (ex: 'Quer que eu separe essa unidade para você?', 'Posso te enviar a nossa chave PIX para confirmar?').",
-          "2. QUEBRA DE OBJEÇÕES: Se o cliente achar caro ou hesitar, destaque a qualidade, durabilidade e o custo-benefício. Se houver cupom ou oferta ativa, use estrategicamente para fechar na hora.",
-          "3. UPSELL & PRODUTOS COMPLEMENTARES: Quando o cliente escolher um produto/serviço, se houver outros itens no catálogo, sugira amigavelmente UM produto complementar ou combo (ex: 'Muitos clientes também levam o item Y junto. Quer que eu inclua no mesmo pedido?'). Faça isso com naturalidade e apenas uma vez.",
-          "4. FECHAMENTO COM PIX COPIA E COLA: Quando o cliente fechar o pedido, confirme o valor total. Se você souber o valor exato, inclua na mesma resposta o marcador [PIX_COPIA_E_COLA: valor] (exemplo: [PIX_COPIA_E_COLA: 120.00]). O sistema gerará e enviará automaticamente o código oficial do PIX Copia e Cola para o cliente pagar em 1 toque no app do banco.",
-          "5. COMPROVANTE: Ao passar os dados de pagamento, lembre o cliente de enviar a foto do comprovante aqui para validação instantânea.",
+          "DIRETRIZES DE CONDUÇÃO E FECHAMENTO:",
+          "1. NUNCA finalize uma mensagem de forma passiva como 'fico à disposição' ou 'qualquer dúvida me chame'. Termine conduzindo para o próximo passo definido no COMO VENDER da empresa, com uma pergunta (ex: 'Quer que eu já deixe isso reservado para você?').",
+          "2. QUEBRA DE OBJEÇÕES: Se o cliente hesitar, use as respostas de objeções da empresa e destaque os diferenciais reais. Se houver oferta ativa, use com naturalidade, sem pressionar.",
+          ...(c.foco_atendimento === "vendas"
+            ? ["3. COMPLEMENTARES: Quando o cliente escolher um item, se houver outro item do catálogo que realmente combine, sugira UM complemento com naturalidade e apenas uma vez."]
+            : []),
+          ...(temPix
+            ? [
+                "FECHAMENTO COM PIX COPIA E COLA: Quando o cliente fechar o pedido, confirme o valor total. Se você souber o valor exato, inclua na mesma resposta o marcador [PIX_COPIA_E_COLA: valor] (exemplo: [PIX_COPIA_E_COLA: 120.00]). O sistema gerará e enviará automaticamente o código oficial do PIX Copia e Cola para o cliente pagar em 1 toque no app do banco.",
+                "COMPROVANTE: Ao passar os dados de pagamento, lembre o cliente de enviar a foto do comprovante aqui para validação instantânea.",
+              ]
+            : ["PAGAMENTO: não envie chave PIX, código de pagamento nem dados bancários. Siga as instruções de pagamento da empresa."]),
         ]),
 
     c.segmento ? `Segmento da empresa: ${c.segmento}.` : "",
@@ -274,13 +287,13 @@ export function buildSystemPrompt(
     c.ofertas ? `OFERTAS ATIVAS:\n${c.ofertas}` : "",
     c.cupom ? `Cupom disponível: ${c.cupom} (só ofereça quando fizer sentido pra fechar)` : "",
     c.formas_pagamento ? `Formas de pagamento aceitas: ${c.formas_pagamento}` : "",
-    (c.chave_pix || c.titular_pix || c.instrucoes_pagamento)
+    temPix
       ? `DADOS OFICIAIS PARA PAGAMENTO VIA PIX / FECHAMENTO:
-${c.chave_pix ? `• Chave PIX: ${c.chave_pix}` : ""}
+• Chave PIX: ${c.chave_pix}
 ${c.titular_pix ? `• Titular / Beneficiário: ${c.titular_pix}` : ""}
-${c.instrucoes_pagamento ? `• Instruções de pagamento / entrega: ${c.instrucoes_pagamento}` : ""}
 Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma linha destacada para que o cliente consiga copiar com facilidade no WhatsApp. Solicite o envio do comprovante para separação do pedido.`
       : "",
+    c.instrucoes_pagamento ? `INSTRUÇÕES DE PAGAMENTO / ENTREGA (siga exatamente):\n${c.instrucoes_pagamento}` : "",
     c.ticket_medio ? `Ticket médio de referência: ${c.ticket_medio}` : "",
     safeText(c.como_vender) ? `COMO VENDER (passo a passo de vendas da empresa):\n${safeText(c.como_vender)}` : "",
     safeText(c.objecoes) ? `OBJEÇÕES COMUNS E COMO RESPONDER:\n${safeText(c.objecoes)}` : "",
@@ -350,8 +363,8 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
     `AO FINAL DA RESPOSTA, em uma nova linha, escreva exatamente:
 [ESTAGIO: ${stageNames}]
 Escolha 1 entre as etapas reais do CRM da empresa listadas acima que melhor reflete o momento da negociação:
-- Se enviou a chave PIX ou aguarda comprovante/pagamento: escolha a etapa mais condizente (ex: "Aguardando Pagamento" ou "Negociando").
 ` +
+      (temPix ? `- Se enviou a chave PIX ou aguarda comprovante/pagamento: escolha a etapa mais condizente (ex: "Aguardando Pagamento" ou "Negociando").\n` : "") +
       (stagesFinaisNomes.length
         ? `- Use uma etapa final (${stagesFinaisNomes.join(" / ")}) APENAS se o cliente confirmou o pagamento/pedido (ganho) ou recusou/desistiu claramente (perda).\n`
         : "") +

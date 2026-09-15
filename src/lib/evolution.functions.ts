@@ -354,7 +354,7 @@ export const testAiReply = createServerFn({ method: "POST" })
     const [{ data: cfg }, { data: stagesRows }, { data: prodRows }] = await Promise.all([
       supabase.from("agent_config").select("*").eq("company_id", companyId).maybeSingle(),
       supabase.from("crm_stage").select("nome, tipo, ordem").eq("company_id", companyId).order("ordem", { ascending: true }),
-      supabase.from("produto").select("nome, preco, descricao, imagem_url, ordem").eq("company_id", companyId).eq("ativo", true).order("ordem", { ascending: true }),
+      supabase.from("produto").select("*").eq("company_id", companyId).eq("ativo", true).order("ordem", { ascending: true }),
     ]);
     const stages = (stagesRows ?? []).map((s: any) => ({ nome: s.nome, tipo: s.tipo }));
     const produtos = (prodRows ?? []).map((p: any) => ({ nome: p.nome, preco: p.preco, descricao: p.descricao, imagem_url: p.imagem_url }));
@@ -366,14 +366,12 @@ export const testAiReply = createServerFn({ method: "POST" })
 
     // Enforcement: provider precisa estar liberado no plano (Starter = Gemini)
     const { getCompanyPlan } = await import("./plan-limits.server");
-    const { allowsProvider, PLAN_LABEL } = await import("./plan-features");
+    const { allowsProvider } = await import("./plan-features");
     const plan = await getCompanyPlan(companyId);
     let provider = ((cfg as any)?.ai_provider || "gemini") as string;
     let model = ((cfg as any)?.ai_model || "google/gemini-2.5-flash-lite") as string;
     if (!allowsProvider(plan.slug, provider)) {
-      throw new Error(
-        `O provedor ${provider.toUpperCase()} não está incluso no plano ${PLAN_LABEL[plan.slug]}. Faça upgrade para Pro para usar GPT/Claude.`,
-      );
+      throw new Error(`O provedor ${provider.toUpperCase()} não está liberado nesta conta. Use o Gemini.`);
     }
 
     const raw = await lovableAiChat(

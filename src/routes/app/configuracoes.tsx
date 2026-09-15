@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { HelpTip } from "@/components/help-tip";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -10,9 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Save, CreditCard, Sparkles, AlertTriangle, Download, Shield, Wallet, Lock } from "lucide-react";
+import { Loader2, Save, Sparkles, Download, Shield, Wallet, Lock } from "lucide-react";
 import { brand } from "@/config/brand";
-import { trialDaysLeft } from "@/lib/tenant";
 import { TemplatesTab } from "@/components/config/templates-tab";
 import { HorariosTab } from "@/components/config/horarios-tab";
 import { listAuditLog, exportLgpd } from "@/lib/security.functions";
@@ -32,7 +31,6 @@ function ConfigPage() {
   const ctx = Route.useRouteContext();
   const companyId = ctx.company?.id;
   const userId = ctx.user.id;
-  const company = ctx.company;
 
   const [empresa, setEmpresa] = useState({ nome: "", telefone: "" });
   const [identidade, setIdentidade] = useState({ primary_color: "#22C55E", logo_url: "" });
@@ -42,7 +40,6 @@ function ConfigPage() {
   const [savingI, setSavingI] = useState(false);
   const [savingP, setSavingP] = useState(false);
   const [savingS, setSavingS] = useState(false);
-  const [sub, setSub] = useState<any>(null);
 
   useEffect(() => {
     if (ctx.company) {
@@ -53,18 +50,6 @@ function ConfigPage() {
       const { data } = await supabase.from("profiles").select("nome").eq("user_id", userId).maybeSingle();
       if (data) setPerfil((p) => ({ ...p, nome: data.nome ?? "" }));
     })();
-    if (companyId) {
-      void (async () => {
-        const { data } = await supabase
-          .from("subscription")
-          .select("*, plan:plan(id,nome,preco_cents,moeda,intervalo)")
-          .eq("company_id", companyId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        setSub(data);
-      })();
-    }
   }, [companyId, userId]);
 
   async function saveEmpresa() {
@@ -112,9 +97,8 @@ function ConfigPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">Configurações <HelpTip text="Dados da empresa, templates de resposta rápida, horário de atendimento, segurança, log de auditoria e exportação LGPD." /></h1>
         <p className="text-sm text-muted-foreground">Empresa, identidade e perfil.</p>
       </div>
-      <Tabs defaultValue="plano">
+      <Tabs defaultValue="empresa">
         <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="plano">Plano</TabsTrigger>
           <TabsTrigger value="empresa">Empresa</TabsTrigger>
           <TabsTrigger value="identidade">Identidade</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
@@ -131,10 +115,6 @@ function ConfigPage() {
 
         <TabsContent value="seguranca">
           <SegurancaTab />
-        </TabsContent>
-
-        <TabsContent value="plano">
-          <PlanoCard company={company} sub={sub} />
         </TabsContent>
 
         <TabsContent value="templates">
@@ -348,11 +328,9 @@ function FinanceiroTab() {
           <div className="size-10 rounded-xl bg-muted grid place-items-center"><Lock className="size-5" /></div>
           <div>
             <h2 className="font-semibold">Módulo Financeiro</h2>
-            <p className="text-sm text-muted-foreground">Disponível nos planos <b>Pro</b> e <b>Business</b>. Seu plano atual é <Badge variant="secondary" className="capitalize">{st.planSlug}</Badge>.</p>
+            <p className="text-sm text-muted-foreground">Não foi possível liberar o módulo agora. Recarregue a página.</p>
           </div>
         </div>
-        <p className="text-sm">Inclui contas a pagar/receber, fluxo de caixa, categorias e geração automática de receita quando o lead vai para Ganho no CRM.</p>
-        <Button asChild><Link to="/app/checkout">Fazer upgrade</Link></Button>
       </Card>
     );
   }
@@ -397,81 +375,3 @@ function FinanceiroTab() {
   );
 }
 
-function fmtBRL(cents: number, moeda = "BRL") {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: moeda }).format(cents / 100);
-}
-
-function PlanoCard({ company, sub }: { company: any; sub: any }) {
-  const status = company?.status_cobranca as string | undefined;
-  const trialEnd = sub?.trial_ends_at ?? company?.trial_ate ?? null;
-  const days = trialEnd ? trialDaysLeft(trialEnd) : 0;
-  const isTrial = status === "trial" || sub?.status === "trialing";
-  const isActive = status === "ativo" || sub?.status === "active";
-  const isExpired = isTrial && days <= 0;
-
-  return (
-    <div className="grid md:grid-cols-2 gap-4 max-w-3xl">
-      <Card className="p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Plano atual</h2>
-          {isActive ? (
-            <Badge className="bg-emerald-600">Ativo</Badge>
-          ) : isTrial ? (
-            <Badge variant={isExpired ? "destructive" : "secondary"}>
-              {isExpired ? "Trial expirado" : "Em teste"}
-            </Badge>
-          ) : (
-            <Badge variant="destructive">Inativo</Badge>
-          )}
-        </div>
-        {sub?.plan ? (
-          <>
-            <div className="text-2xl font-bold">{sub.plan.nome}</div>
-            <div className="text-sm text-muted-foreground">
-              {fmtBRL(sub.plan.preco_cents, sub.plan.moeda)}/{sub.plan.intervalo === "month" ? "mês" : "ano"}
-            </div>
-          </>
-        ) : (
-          <div className="text-sm text-muted-foreground">Nenhum plano vinculado ainda.</div>
-        )}
-
-        {isTrial && (
-          <div className={`rounded-md p-3 text-sm flex items-start gap-2 ${
-            isExpired ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-          }`}>
-            {isExpired ? <AlertTriangle className="size-4 mt-0.5" /> : <Sparkles className="size-4 mt-0.5" />}
-            <div>
-              {isExpired ? (
-                <>Seu período de teste terminou. Cadastre o cartão para continuar usando.</>
-              ) : (
-                <>Restam <b>{days} {days === 1 ? "dia" : "dias"}</b> de teste. Cadastre o cartão antes do fim do prazo para não interromper.</>
-              )}
-            </div>
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5 space-y-3">
-        <h2 className="font-semibold">Gerenciar pagamento</h2>
-        <p className="text-sm text-muted-foreground">
-          {isActive
-            ? "Você pode trocar de plano ou atualizar o cartão a qualquer momento."
-            : "Cadastre seu cartão para ativar o plano. Pode cancelar quando quiser."}
-        </p>
-        {sub?.payment_method_brand && (
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <CreditCard className="size-3.5" /> {sub.payment_method_brand} •••• {sub.payment_method_last4}
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2 pt-1">
-          <Button asChild>
-            <Link to="/app/checkout" search={{ plano: sub?.plan?.nome?.toLowerCase() } as any}>
-              <CreditCard className="size-4 mr-1.5" />
-              {isActive ? "Trocar de plano" : "Cadastrar cartão e ativar"}
-            </Link>
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}

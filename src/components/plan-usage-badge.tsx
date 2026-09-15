@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 
 type Props = {
@@ -23,14 +22,7 @@ export function PlanUsageBadge({ label, used, limit, className }: Props) {
         {used}/{limit}
       </span>
       <span className="opacity-80">{label}</span>
-      {hit && (
-        <>
-          <AlertTriangle className="size-3.5" />
-          <Link to="/app/checkout" className="underline underline-offset-2 font-semibold">
-            Fazer upgrade
-          </Link>
-        </>
-      )}
+      {hit && <AlertTriangle className="size-3.5" />}
     </div>
   );
 }

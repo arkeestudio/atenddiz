@@ -6,8 +6,6 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { brand, supportWhatsappUrl, supportWhatsappDisplay } from "@/config/brand";
-import { TrialBanner } from "@/components/trial-banner";
-import { CreditsBadge } from "@/components/credits-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MobileBottomNav, type MobileNavItem } from "@/components/mobile-bottom-nav";
 import { toast } from "sonner";
@@ -38,7 +36,7 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: "Gestão",
     items: [
       { to: "/app/contatos", label: "Contatos", icon: Contact },
-      { to: "/app/financeiro", label: "Financeiro", icon: Wallet, adminOnly: true, tag: "PRO" },
+      { to: "/app/financeiro", label: "Financeiro", icon: Wallet, adminOnly: true },
       { to: "/app/relatorios", label: "Relatórios", icon: BarChart3, adminOnly: true },
       { to: "/app/conexao", label: "Conexão", icon: Smartphone },
       { to: "/app/equipe", label: "Equipe", icon: Users, adminOnly: true },
@@ -91,13 +89,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground" style={{ ["--brand" as any]: primary }}>
-      {company && <TrialBanner company={company} />}
-      {company && (
-        <div className="hidden md:flex items-center justify-end gap-2 px-4 py-1.5 bg-[color:var(--panel)]/60 border-b border-[color:var(--hairline)]">
-          <CreditsBadge />
-        </div>
-      )}
-
+      {/* Sem avisos de venda (teste grátis / recarregar créditos): conta premium. */}
       {/* Mobile top bar */}
       <header className="md:hidden sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-3 bg-[color:var(--panel)]/80 backdrop-blur-xl border-b border-[color:var(--hairline)]">
         <div className="flex items-center gap-2.5 min-w-0">
