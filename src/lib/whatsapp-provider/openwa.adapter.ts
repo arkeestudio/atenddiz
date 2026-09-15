@@ -112,7 +112,10 @@ export class OpenWAAdapter implements IWhatsAppProvider {
     currentInstanceOrSessionId?: string | null,
   ): Promise<DisconnectResult> {
     if (!currentInstanceOrSessionId) return { ok: true };
-    await openwaDeleteSession(currentInstanceOrSessionId);
+    const res: any = await openwaDeleteSession(currentInstanceOrSessionId);
+    if (res?.ok === false) {
+      throw new Error(`Não foi possível desconectar no servidor do WhatsApp (${res.error || "sem resposta"}).`);
+    }
     return { ok: true, deleted: true };
   }
 

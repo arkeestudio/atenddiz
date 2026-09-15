@@ -55,6 +55,28 @@ function killSessionBrowser(sessionId) {
   proc.on('error', (err) => console.warn(`[OpenWA Server] Falha ao encerrar Chrome de ${sessionId}:`, err.message));
 }
 
+// Apaga o login salvo da sessão (perfil do Chrome _IGNORE_<sessão> + <sessão>.data.json).
+// Sem isso, a próxima conexão entra logada sozinha e o aparelho nunca sai do celular.
+async function removeSessionData(sessionId) {
+  if (!SESSION_NAME_RE.test(sessionId)) return;
+  const targets = [
+    path.resolve(process.cwd(), `_IGNORE_${sessionId}`),
+    path.resolve(process.cwd(), `${sessionId}.data.json`),
+  ];
+  // O Chrome leva alguns segundos para morrer e soltar os arquivos do perfil.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    for (const t of targets) {
+      try { fs.rmSync(t, { recursive: true, force: true }); } catch {}
+    }
+    if (!targets.some((t) => fs.existsSync(t))) {
+      console.log(`[OpenWA Server] Login salvo de ${sessionId} apagado.`);
+      return;
+    }
+  }
+  console.warn(`[OpenWA Server] Não foi possível apagar todo o login salvo de ${sessionId}.`);
+}
+
 function isAuthorized(req) {
   if (!API_KEY) {
     // Sem chave configurada, só aceita chamadas da própria máquina.
@@ -450,17 +472,30 @@ const server = http.createServer(async (req, res) => {
     const deleteMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
     if (method === 'DELETE' && deleteMatch) {
       const sessionId = decodeURIComponent(deleteMatch[1]);
+      if (!SESSION_NAME_RE.test(sessionId)) return json({ error: 'Invalid session name' }, 400);
       const s = sessions.get(sessionId);
+      let loggedOut = false;
       if (s) {
         sessions.delete(sessionId);
         saveRegisteredSessions();
         if (s.client) {
+          // Logout de verdade: remove o aparelho de "Dispositivos conectados" no celular.
+          try {
+            await Promise.race([
+              s.client.logout(),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('logout timeout')), 20_000)),
+            ]);
+            loggedOut = true;
+          } catch (err) {
+            console.warn(`[OpenWA Server] Logout de ${sessionId} falhou:`, err.message);
+          }
           try { await s.client.kill('session deleted'); } catch {}
         }
         // Sessão sem login ainda não tem client: o Chrome dela precisa ser encerrado pelo perfil.
         killSessionBrowser(sessionId);
       }
-      return json({ ok: true });
+      await removeSessionData(sessionId);
+      return json({ ok: true, loggedOut });
     }
 
     // POST /api/sessions/:sessionId/messages/send-text
