@@ -10,14 +10,16 @@ import { brand } from "@/config/brand";
 import {
   Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
-  Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, PhoneForwarded
+  Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList
 } from "lucide-react";
 import { sendCsat } from "@/lib/csat.functions";
 import { toast } from "sonner";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { sendWhatsappText, sendWhatsappMedia, sendInternalNote, setContactIaActive, summarizeConversation, transcribeAudioMessage } from "@/lib/evolution.functions";
 import { AUDIO_ENVIADO, TRANSCREVENDO, audioPendingText } from "@/lib/audio-labels";
-import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner, forwardLeadSummaryManual } from "@/lib/chat-copilot.functions";
+import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner } from "@/lib/chat-copilot.functions";
+import { marcarAtendido } from "@/lib/ficha.functions";
+import { FichaAtendimento } from "@/components/ficha/ficha-atendimento";
 import { markConversationSeen, sendTypingPresence } from "@/lib/whatsapp.functions";
 import { LeadDrawer, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
 import { listTemplates, saveTemplate, deleteTemplate, type MessageTemplate } from "@/lib/templates.functions";
@@ -26,6 +28,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export const Route = createFileRoute("/app/conversas")({
   head: () => ({ meta: [{ title: `${brand.name} — Conversas` }] }),
+  // ?numero= abre direto a conversa (usado pelo aviso de "aguardando humano").
+  validateSearch: (s: Record<string, unknown>): { numero?: string } => ({
+    numero: typeof s.numero === "string" && s.numero ? s.numero : undefined,
+  }),
   component: ConversasPage,
 });
 
@@ -74,13 +80,13 @@ function ConversasPage() {
   const assignOwnerFn = useServerFn(assignConversationOwner);
   const markSeenFn = useServerFn(markConversationSeen);
   const sendPresenceFn = useServerFn(sendTypingPresence);
-  const forwardSummaryFn = useServerFn(forwardLeadSummaryManual);
+  const marcarAtendidoFn = useServerFn(marcarAtendido);
+  const search_ = Route.useSearch();
 
   // Estados do Copiloto IA e PIX
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [polishing, setPolishing] = useState(false);
   const [pixModalOpen, setPixModalOpen] = useState(false);
-  const [forwardingSummary, setForwardingSummary] = useState(false);
   const [pixValorInput, setPixValorInput] = useState("");
   const [pixDescInput, setPixDescInput] = useState("");
   const [sendingPix, setSendingPix] = useState(false);
@@ -198,6 +204,15 @@ function ConversasPage() {
       .on("postgres_changes",
         { event: "*", schema: "public", table: "contact_pause", filter: `company_id=eq.${companyId}` },
         () => { void loadPauses(companyId); },
+      )
+      // Ficha e fila "aguardando humano" mudam no servidor (IA/outra pessoa): reflete na hora.
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "crm_cards", filter: `company_id=eq.${companyId}` },
+        (payload) => {
+          const row = payload.new as any;
+          if (!row?.numero) return;
+          setCards((prev) => ({ ...prev, [row.numero]: { ...prev[row.numero], ...row } }));
+        },
       )
       .subscribe((status) => {
         // Numa REassinatura (queda de rede, servidor reciclando o socket) o que
@@ -339,26 +354,6 @@ function ConversasPage() {
       setSummaryOpen(false);
     } catch (e: any) {
       toast.error(e?.message || "Erro ao salvar nota interna");
-    }
-  }
-
-  async function handleForwardSummary(customDest?: string) {
-    if (!active) return;
-    setForwardingSummary(true);
-    try {
-      const res = await forwardSummaryFn({
-        data: {
-          numero: active,
-          contatoNome: activeConv?.nome ?? null,
-          destinationNumber: customDest || undefined,
-        },
-      });
-      toast.success(`Resumo executivo encaminhado com sucesso via WhatsApp para ${res.destination}!`);
-      setSummaryOpen(false);
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao encaminhar resumo");
-    } finally {
-      setForwardingSummary(false);
     }
   }
 
@@ -527,6 +522,11 @@ function ConversasPage() {
     void markSeenFn({ data: { numero } });
   }
 
+  useEffect(() => {
+    if (search_.numero) handleSelectConversation(search_.numero);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search_.numero]);
+
   const countsAguardandoHumano = useMemo(() => {
     const map = new Map<string, Msg>();
     for (const m of msgs) {
@@ -538,7 +538,7 @@ function ConversasPage() {
       const tipo = card?.stage_id ? stages.find((s) => s.id === card.stage_id)?.tipo : null;
       const resolvida = tipo === "ganho" || tipo === "perda";
       const iaAtiva = !(pauses[num] ?? false);
-      if (!resolvida && (!iaAtiva || (last.direcao === "entrada" && last.autor === "contato"))) {
+      if (card?.aguardando_humano || (!resolvida && (!iaAtiva || (last.direcao === "entrada" && last.autor === "contato")))) {
         c++;
       }
     }
@@ -570,14 +570,22 @@ function ConversasPage() {
       const resolvida = tipo === "ganho" || tipo === "perda";
       switch (filter) {
         case "nao_lidas": return (unread[c.numero] ?? 0) > 0;
-        case "aguardando_humano": return !resolvida && (!iaAtiva || (c.last.direcao === "entrada" && c.last.autor === "contato"));
+        case "aguardando_humano": return !!card?.aguardando_humano || (!resolvida && (!iaAtiva || (c.last.direcao === "entrada" && c.last.autor === "contato")));
         case "minhas": return card?.owner_id === userId;
         case "ia_ativa": return iaAtiva && !resolvida;
         case "resolvidas": return resolvida;
         default: return true;
       }
     });
-    return list.sort((a, b) => +new Date(b.last.created_at) - +new Date(a.last.created_at));
+    // Transferidos para humano ficam no topo, do mais antigo esperando para o mais novo.
+    return list.sort((a, b) => {
+      const ca = cards[a.numero], cb = cards[b.numero];
+      if (!!ca?.aguardando_humano !== !!cb?.aguardando_humano) return ca?.aguardando_humano ? -1 : 1;
+      if (ca?.aguardando_humano && cb?.aguardando_humano) {
+        return +new Date(ca.aguardando_desde || 0) - +new Date(cb.aguardando_desde || 0);
+      }
+      return +new Date(b.last.created_at) - +new Date(a.last.created_at);
+    });
   }, [msgs, search, filter, unread, cards, pauses, stages, userId]);
 
   const thread = useMemo(() =>
@@ -635,6 +643,9 @@ function ConversasPage() {
   async function assumir() {
     if (!active) return;
     await toggleIa(false);
+    if (cards[active]?.aguardando_humano) {
+      void marcarAtendidoFn({ data: { numero: active } }).catch(() => {});
+    }
     toast.success("Você assumiu este atendimento. A IA volta sozinha após 30 min sem resposta sua.");
   }
 
@@ -805,7 +816,8 @@ function ConversasPage() {
               const card = cards[c.numero];
               const tipo = card?.stage_id ? stages.find((s) => s.id === card.stage_id)?.tipo : null;
               const resolvida = tipo === "ganho" || tipo === "perda";
-              const aguardandoHumano = !resolvida && (!iaAtiva || (c.last.direcao === "entrada" && c.last.autor === "contato"));
+              const transferido = !!card?.aguardando_humano;
+              const aguardandoHumano = transferido || (!resolvida && (!iaAtiva || (c.last.direcao === "entrada" && c.last.autor === "contato")));
 
               return (
                 <li key={c.numero}>
@@ -827,8 +839,11 @@ function ConversasPage() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <p className="text-[12.5px] text-muted-foreground truncate flex-1">{c.last.texto}</p>
                         {aguardandoHumano ? (
-                          <span title="Aguardando atendimento humano" className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 animate-pulse">
-                            <Hand className="size-2.5" /> Humano
+                          <span
+                            title={transferido ? `Transferido pela IA: ${card?.transferencia_motivo || "atendimento humano"}` : "Aguardando atendimento humano"}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 animate-pulse"
+                          >
+                            <Hand className="size-2.5" /> {transferido ? "Transferido" : "Humano"}
                           </span>
                         ) : iaAtiva ? (
                           <span title="IA ativa" className="text-[color:var(--brand-text)]"><Bot className="size-3" /></span>
@@ -941,17 +956,19 @@ function ConversasPage() {
                   >
                     <Sparkles className="size-3.5 mr-1 text-purple-600 dark:text-purple-400" /> Resumo IA
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleForwardSummary()}
-                    disabled={forwardingSummary}
-                    title="Gera resumo com IA e encaminha via WhatsApp para a equipe"
-                    className="bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
-                  >
-                    {forwardingSummary ? <Loader2 className="size-3.5 animate-spin mr-1 text-emerald-600" /> : <PhoneForwarded className="size-3.5 mr-1 text-emerald-600 dark:text-emerald-400" />}
-                    Encaminhar
-                  </Button>
+                  {activeCard && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDrawerCard(activeCard)}
+                      title="Ficha do atendimento: o que a IA coletou, editável pela equipe"
+                      className={activeCard.aguardando_humano
+                        ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
+                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"}
+                    >
+                      <ClipboardList className="size-3.5 mr-1" /> Ficha
+                    </Button>
+                  )}
                   <label className="flex items-center gap-2 text-[12px] text-muted-foreground font-medium">
                     <Bot className="size-3.5" /> IA
                     <Switch checked={iaAtivaAqui} onCheckedChange={(v) => void toggleIa(v)} />
@@ -1247,9 +1264,14 @@ function ConversasPage() {
                   <p className="text-[13px] text-foreground/85 whitespace-pre-wrap">{activeCard.observacao}</p>
                 </div>
               )}
+              {companyId && (
+                <div className="pt-3 border-t border-[color:var(--hairline)]">
+                  <FichaAtendimento key={active} companyId={companyId} card={activeCard} />
+                </div>
+              )}
               {activeCard && (
                 <Button variant="outline" size="sm" onClick={() => setDrawerCard(activeCard)}>
-                  <ExternalLink className="size-3.5 mr-1.5" /> Abrir ficha do lead
+                  <ExternalLink className="size-3.5 mr-1.5" /> Abrir no CRM
                 </Button>
               )}
               <div className="mt-auto pt-3 border-t border-[color:var(--hairline)] text-[11.5px] text-muted-foreground flex items-center gap-1.5">
@@ -1307,15 +1329,6 @@ function ConversasPage() {
                 className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
               >
                 <Lock className="size-3.5 mr-1" /> Nota Interna
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => void handleForwardSummary()}
-                disabled={summaryLoading || forwardingSummary}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-              >
-                {forwardingSummary ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <PhoneForwarded className="size-3.5 mr-1" />}
-                Encaminhar no WhatsApp
               </Button>
             </div>
           </DialogFooter>
@@ -1474,7 +1487,7 @@ function ConversasPage() {
 
       {companyId && (
         <LeadDrawer
-          card={drawerCard} stages={stages} members={members} companyId={companyId}
+          card={drawerCard ? cards[drawerCard.numero] ?? drawerCard : null} stages={stages} members={members} companyId={companyId}
           onClose={() => setDrawerCard(null)}
           onChanged={() => { if (companyId) void load(companyId); }}
         />

@@ -11,11 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard, ShoppingBag, Headphones, ArrowRightLeft, PhoneForwarded } from "lucide-react";
+import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard, ShoppingBag, Headphones, ArrowRightLeft, ClipboardList, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { brand } from "@/config/brand";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { testAiReply } from "@/lib/evolution.functions";
-import { testForwardSummary } from "@/lib/chat-copilot.functions";
+import { FICHA_CAMPOS_PADRAO, normalizeFichaCampos, novoIdCampo, type FichaCampo } from "@/lib/ficha-campos";
 import { generateAgentConfig, analyzeBusinessBrief, type BriefQuestion } from "@/lib/agent-ai.functions";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { defaultHours, DIA_LABEL, type BusinessHours } from "@/lib/business-hours";
@@ -80,12 +80,12 @@ function AgentePage() {
   const [testReply, setTestReply] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [focoAtendimento, setFocoAtendimento] = useState<"vendas" | "suporte" | "ambos">("vendas");
-  const [testingForward, setTestingForward] = useState(false);
-  const testForwardFn = useServerFn(testForwardSummary);
+  const [fichaCampos, setFichaCampos] = useState<FichaCampo[]>(FICHA_CAMPOS_PADRAO);
 
   async function reload() {
     if (!companyId) return;
     const { data } = await supabase.from("agent_config").select("*").eq("company_id", companyId).maybeSingle();
+    if (data) setFichaCampos(normalizeFichaCampos((data as any).ficha_campos));
     if (data && data.nome_agente && data.nome_agente.trim() && data.sobre_empresa) {
       setHasConfig(true);
       setCfg(data);
@@ -116,19 +116,20 @@ function AgentePage() {
   }
   useEffect(() => { void reload(); }, [companyId]);
 
-  async function handleTestForward() {
-    if (!telefone.trim()) {
-      return toast.error("Informe um número de WhatsApp com DDD para testar o envio de resumo.");
-    }
-    setTestingForward(true);
-    try {
-      await testForwardFn({ data: { destinationNumber: telefone } });
-      toast.success(`Mensagem de teste de resumo enviada com sucesso para o WhatsApp ${telefone}!`);
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao enviar teste de encaminhamento.");
-    } finally {
-      setTestingForward(false);
-    }
+  function updCampo(i: number, patch: Partial<FichaCampo>) {
+    setFichaCampos((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  }
+  function moveCampo(i: number, dir: -1 | 1) {
+    setFichaCampos((cs) => {
+      const j = i + dir;
+      if (j < 0 || j >= cs.length) return cs;
+      const next = cs.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+  function addCampo() {
+    setFichaCampos((cs) => [...cs, { id: novoIdCampo(`campo ${cs.length + 1}`, cs), label: "" }]);
   }
 
   async function runAnalyze() {
@@ -198,6 +199,10 @@ function AgentePage() {
       chave_pix: chavePix,
       titular_pix: titularPix,
       instrucoes_pagamento: instrucoesPagamento,
+      // Campo sem nome é descartado; o id fica estável para não perder o que já foi preenchido.
+      ficha_campos: fichaCampos
+        .map((c) => ({ ...c, label: c.label.trim(), dica: c.dica?.trim() || undefined }))
+        .filter((c) => c.label),
     };
     const { user_id: _u, company_id: _c, updated_at: _ua, ...rest } = payload;
     const { error } = await supabase.from("agent_config").upsert(
@@ -583,40 +588,61 @@ function AgentePage() {
             </div>
           </Section>
 
-          <Section title="Encaminhamento & Transbordo com Resumo Inteligente" icon={<PhoneForwarded className="size-3.5" />}>
+          <Section title="Ficha do atendimento & transferência para humano" icon={<ClipboardList className="size-3.5" />}>
             <div className="space-y-3.5">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Quando um cliente pedir atendimento humano ou precisar de um atendente, a IA gera automaticamente um <b>resumo executivo</b> com o perfil, interesse e pontos discutidos e encaminha para o WhatsApp abaixo com o link para você assumir a conversa.
-              </p>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">WhatsApp de Destino para Receber os Resumos (com DDD)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={telefone}
-                    onChange={(e) => setTelefone(e.target.value)}
-                    placeholder="Ex: 11999990000 ou +55 11 99999-0000"
-                    className="text-xs font-mono"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleTestForward()}
-                    disabled={testingForward || !telefone.trim()}
-                    className="shrink-0 text-xs gap-1.5 border-[var(--brand)]/40 hover:bg-[var(--brand)]/10"
-                  >
-                    {testingForward ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-                    Testar Envio
-                  </Button>
-                </div>
-              </div>
               <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3 text-[11px] text-muted-foreground leading-relaxed space-y-1">
-                <div className="font-semibold text-foreground flex items-center gap-1">
-                  💡 <span>Como a IA encaminha:</span>
-                </div>
+                <div className="font-semibold text-foreground">Como funciona</div>
                 <p>
-                  A IA pausa as respostas automáticas para não atrapalhar o humano (e volta sozinha após 30 minutos sem resposta de um atendente) e envia uma mensagem formatada contendo: <b>Nome do cliente, WhatsApp, etapa no CRM e o resumo inteligente do que ele precisa</b> com link direto para abrir no WhatsApp.
+                  Durante a conversa a IA descobre, com naturalidade, as informações abaixo e monta a <b>ficha do atendimento</b> de cada contato. Quando o cliente precisa de uma pessoa, a IA avisa o cliente, pausa as respostas e coloca o contato na fila <b>Aguardando Humano</b> — a equipe recebe um aviso no painel e abre a conversa já com a ficha ao lado, pronta para ler e editar. Nada é enviado para o WhatsApp de ninguém.
                 </p>
+                <p>Se ninguém responder em 30 minutos, a IA volta a atender sozinha.</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs font-semibold">Campos da ficha</Label>
+                  <button
+                    type="button"
+                    onClick={() => setFichaCampos(FICHA_CAMPOS_PADRAO)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                  >
+                    Restaurar padrão
+                  </button>
+                </div>
+                {fichaCampos.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhum campo: a ficha terá só o resumo e o próximo passo.</p>
+                )}
+                {fichaCampos.map((c, i) => (
+                  <div key={c.id} className="flex flex-col sm:flex-row gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2">
+                    <Input
+                      value={c.label}
+                      onChange={(e) => updCampo(i, { label: e.target.value })}
+                      placeholder="Nome do campo (ex: Nome da criança)"
+                      className="text-xs sm:w-[45%]"
+                    />
+                    <Input
+                      value={c.dica ?? ""}
+                      onChange={(e) => updCampo(i, { dica: e.target.value })}
+                      placeholder="Dica para a IA (opcional)"
+                      className="text-xs flex-1"
+                    />
+                    <div className="flex gap-1 justify-end">
+                      <Button type="button" size="icon" variant="ghost" className="size-8" onClick={() => moveCampo(i, -1)} disabled={i === 0} title="Subir">
+                        <ArrowUp className="size-3.5" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" className="size-8" onClick={() => moveCampo(i, 1)} disabled={i === fichaCampos.length - 1} title="Descer">
+                        <ArrowDown className="size-3.5" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" className="size-8 hover:text-destructive" onClick={() => setFichaCampos((cs) => cs.filter((_, j) => j !== i))} title="Remover">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={addCampo} className="text-xs">
+                  <Plus className="size-3.5 mr-1" /> Adicionar campo
+                </Button>
+                <p className="text-[11px] text-muted-foreground">Clique em <b>Salvar</b> no topo da página para aplicar.</p>
               </div>
             </div>
           </Section>

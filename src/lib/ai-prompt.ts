@@ -1,3 +1,5 @@
+import { normalizeFichaCampos } from "./ficha-campos";
+
 export interface ProdutoBrief {
   nome: string;
   preco?: number | string | null;
@@ -239,6 +241,7 @@ export function buildSystemPrompt(
   const apresentacao = c.apresentacao?.replace(/\[\s*nome\s*\]|\{\s*nome\s*\}/gi, c.nome_agente || "assistente virtual");
   // Instruções de PIX só fazem sentido se a empresa cadastrou chave (senão contradizem "não cobramos por WhatsApp").
   const temPix = !!c.chave_pix?.trim();
+  const fichaCampos = normalizeFichaCampos((c as any).ficha_campos);
 
   const stageNames = stages.map((s) => s.nome).join(" | ");
   const stagesFinaisNomes = stages.filter((s) => s.tipo === "ganho" || s.tipo === "perda").map((s) => s.nome);
@@ -312,9 +315,10 @@ Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma
         `Antecedência mínima: ${c.antecedencia_min || "2 horas"}. ` +
         `Sempre confirme nome e o melhor horário antes de fechar o agendamento.`
       : "",
-    c.telefone_transferencia
-      ? `TRANSBORDO HUMANO: Se o cliente pedir atendimento humano, reclamar de algo delicado ou solicitar algo fora do escopo, avise educadamente que está transferindo. Em seguida, inclua o marcador [ENCAMINHAR_HUMANO: motivo] na resposta. O sistema encaminhará automaticamente um resumo executivo da conversa para ${c.telefone_transferencia}.`
-      : "TRANSBORDO HUMANO: Se o cliente pedir atendimento humano ou for algo sensível, diga educadamente que vai chamar alguém do time e inclua [ENCAMINHAR_HUMANO: motivo].",
+    "TRANSBORDO HUMANO: Se o cliente pedir atendimento humano, reclamar de algo delicado ou precisar de algo que você não pode resolver, avise educadamente que vai chamar alguém da equipe e inclua o marcador [ENCAMINHAR_HUMANO: motivo curto] na resposta. A equipe recebe no sistema a ficha com o resumo da conversa.",
+    fichaCampos.length
+      ? `INFORMAÇÕES QUE A EQUIPE PRECISA (ficha do atendimento): ao longo da conversa, descubra com naturalidade, uma pergunta por vez e só quando fizer sentido (nunca em formato de questionário): ${fichaCampos.map((f) => f.label).join("; ")}. Não pergunte de novo o que o cliente já contou.`
+      : "",
     opts?.resumoContato ? `Contexto do contato: ${opts.resumoContato}` : "",
     opts?.estagioAtual ? `Estágio atual no CRM: ${opts.estagioAtual}.` : "",
     `MÉTODO DE ATENDIMENTO (siga sempre):

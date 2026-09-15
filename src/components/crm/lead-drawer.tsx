@@ -10,11 +10,11 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Save, Trash2, Send, Sparkles, PhoneForwarded } from "lucide-react";
+import { Loader2, Save, Trash2, Send, Sparkles, Hand } from "lucide-react";
 import { generateLeadFollowup, sendLeadFollowup } from "@/lib/sales-recovery.functions";
-import { forwardLeadSummaryManual } from "@/lib/chat-copilot.functions";
+import { FichaAtendimento, type FichaCard } from "@/components/ficha/ficha-atendimento";
 
-export interface LeadCard {
+export interface LeadCard extends FichaCard {
   id: string; numero: string; nome: string | null;
   status: string; stage_id: string | null;
   ultima_mensagem: string | null; ultima_em: string;
@@ -32,8 +32,8 @@ export function LeadDrawer({
   companyId: string; onClose: () => void; onChanged: () => void;
 }) {
   const [local, setLocal] = useState<LeadCard | null>(card);
-  const [tab, setTab] = useState("dados");
-  useEffect(() => { setLocal(card); setTab("dados"); }, [card?.id]);
+  const [tab, setTab] = useState("ficha");
+  useEffect(() => { setLocal(card); setTab("ficha"); }, [card?.id]);
 
   if (!card || !local) return null;
 
@@ -58,28 +58,6 @@ export function LeadDrawer({
     onChanged();
   }
 
-  const [forwarding, setForwarding] = useState(false);
-  const forwardSummaryFn = useServerFn(forwardLeadSummaryManual);
-
-  async function handleForwardLead() {
-    if (!local?.numero) return;
-    setForwarding(true);
-    try {
-      const res = await forwardSummaryFn({
-        data: {
-          numero: local.numero,
-          contatoNome: local.nome,
-          motivo: "Encaminhado manualmente pelo CRM",
-        },
-      });
-      toast.success(`Resumo do lead encaminhado com sucesso via WhatsApp para ${res.destination}!`);
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao encaminhar resumo");
-    } finally {
-      setForwarding(false);
-    }
-  }
-
   return (
     <Sheet open={!!card} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto bg-[var(--panel)] border-l border-[var(--border)]">
@@ -90,22 +68,17 @@ export function LeadDrawer({
               <SheetTitle className="truncate text-base">{local.nome || local.numero}</SheetTitle>
               <div className="text-xs text-muted-foreground font-mono">{local.numero}</div>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void handleForwardLead()}
-              disabled={forwarding}
-              title="Gera resumo com IA e envia via WhatsApp para a equipe"
-              className="text-xs gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 shrink-0"
-            >
-              {forwarding ? <Loader2 className="size-3.5 animate-spin" /> : <PhoneForwarded className="size-3.5" />}
-              Encaminhar Resumo
-            </Button>
+            {local.aguardando_humano && (
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-1 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 shrink-0">
+                <Hand className="size-3" /> Aguardando humano
+              </span>
+            )}
           </div>
         </SheetHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="mt-4">
-          <TabsList className="grid grid-cols-5 w-full">
+          <TabsList className="grid grid-cols-6 w-full">
+            <TabsTrigger value="ficha">Ficha</TabsTrigger>
             <TabsTrigger value="dados">Dados</TabsTrigger>
             <TabsTrigger value="conversa">Conversa</TabsTrigger>
             <TabsTrigger value="followup" className="text-amber-500 font-medium flex items-center gap-1">
@@ -114,6 +87,10 @@ export function LeadDrawer({
             <TabsTrigger value="notas">Notas</TabsTrigger>
             <TabsTrigger value="hist">Histórico</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="ficha" className="mt-4">
+            <FichaAtendimento companyId={companyId} card={card} onChanged={onChanged} />
+          </TabsContent>
 
           <TabsContent value="dados" className="space-y-3 mt-4">
             <Field label="Nome" value={local.nome ?? ""} onChange={(v) => set("nome", v)} />

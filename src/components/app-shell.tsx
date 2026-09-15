@@ -11,6 +11,7 @@ import { MobileBottomNav, type MobileNavItem } from "@/components/mobile-bottom-
 import { toast } from "sonner";
 import type { CompanyRow, Membership } from "@/lib/tenant";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
+import { useAguardandoHumano } from "@/hooks/use-aguardando-humano";
 
 type NavItem = {
   to: string;
@@ -61,6 +62,7 @@ export function AppShell({
 }) {
   const loc = useLocation();
   const navigate = useNavigate();
+  const aguardandoHumano = useAguardandoHumano(company?.id);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -131,6 +133,7 @@ export function AppShell({
           email={email}
           roleLabel={roleLabel}
           signOut={signOut}
+          aguardandoHumano={aguardandoHumano}
         />
         <main className="flex-1 px-4 pt-4 pb-28 md:p-8 md:pb-8 max-w-7xl w-full mx-auto">
           <div className="hidden md:flex items-center justify-between gap-3 mb-6">
@@ -156,7 +159,7 @@ export function AppShell({
 }
 
 function Sidebar({
-  loc, company, isSuperAdmin, isAdmin, primary, userName, email, roleLabel, signOut,
+  loc, company, isSuperAdmin, isAdmin, primary, userName, email, roleLabel, signOut, aguardandoHumano,
 }: any) {
   return (
     <aside className="hidden md:flex w-[260px] min-h-screen border-r border-[color:var(--hairline)] bg-[color:var(--sidebar-bg)] flex-col">
@@ -185,7 +188,8 @@ function Sidebar({
             </div>
             <div className="flex flex-col gap-1">
               {sec.items.filter((i) => !i.adminOnly || isAdmin).map((item) => (
-                <NavLink key={item.to} item={item} active={loc.pathname.startsWith(item.to)} primary={primary} />
+                <NavLink key={item.to} item={item} active={loc.pathname.startsWith(item.to)} primary={primary}
+                  count={item.badge ? aguardandoHumano : 0} />
               ))}
             </div>
           </div>
@@ -227,7 +231,7 @@ function Sidebar({
   );
 }
 
-function NavLink({ item, active, primary }: { item: NavItem; active: boolean; primary: string }) {
+function NavLink({ item, active, primary, count = 0 }: { item: NavItem; active: boolean; primary: string; count?: number }) {
   const Icon = item.icon;
   return (
     <Link
@@ -254,6 +258,14 @@ function NavLink({ item, active, primary }: { item: NavItem; active: boolean; pr
       )}
       <Icon className="size-[18px] shrink-0" style={active ? { color: primary } : undefined} />
       <span className="flex-1 truncate">{item.label}</span>
+      {count > 0 && (
+        <span
+          title={`${count} aguardando atendimento humano`}
+          className="min-w-[20px] h-5 px-1.5 rounded-full grid place-items-center text-[11px] font-bold bg-amber-500 text-black animate-pulse"
+        >
+          {count}
+        </span>
+      )}
       {item.tag && (
         <span
           className="text-[10px] font-bold px-1.5 py-0.5 rounded ring-1"

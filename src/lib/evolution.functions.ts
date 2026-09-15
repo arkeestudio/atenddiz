@@ -31,6 +31,17 @@ async function resolveCompanyId(supabase: any, userId: string): Promise<string> 
   return data.company_id as string;
 }
 
+// A equipe respondeu pelo painel: o contato sai da fila "Aguardando humano".
+async function clearAguardandoHumano(supabase: any, companyId: string, numero: string) {
+  const { error } = await supabase
+    .from("crm_cards")
+    .update({ aguardando_humano: false, aguardando_desde: null })
+    .eq("company_id", companyId)
+    .eq("numero", numero)
+    .eq("aguardando_humano", true);
+  if (error) console.warn("[aguardando_humano] não foi possível limpar:", error.message);
+}
+
 export const connectWhatsapp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   // `force` = "trocar número": derruba a sessão atual antes de pedir o QR.
@@ -182,6 +193,7 @@ export const sendWhatsappText = createServerFn({ method: "POST" })
     }).select("*").single();
     if (error) throw new Error(error.message);
     // Envio manual não pausa a IA: só "Assumir", o switch IA ou o pedido do cliente pausam.
+    await clearAguardandoHumano(supabase, companyId, data.numero);
     return { ok: true, mensagem: inserted ?? null };
   });
 
@@ -225,6 +237,7 @@ export const sendWhatsappMedia = createServerFn({ method: "POST" })
       whatsapp_message_id: messageId,
     }).select("*").single();
     if (error) throw new Error(error.message);
+    await clearAguardandoHumano(supabase, companyId, data.numero);
     return { ok: true, mensagem: inserted ?? null };
   });
 

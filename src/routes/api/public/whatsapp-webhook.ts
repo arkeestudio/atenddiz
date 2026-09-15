@@ -316,23 +316,13 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               });
             } catch (e: any) { console.error("[transbordo send]", e?.message); }
 
-            // Gera e encaminha resumo executivo do lead via WhatsApp para o número de transferência configurado
-            try {
-              const { generateAndForwardLeadSummary } = await import("@/lib/lead-handover.server");
-              generateAndForwardLeadSummary({
-                supabase: supabaseAdmin,
-                companyId,
-                userId,
-                leadNumber: number,
-                leadName: pushName,
-                reason: "Cliente solicitou atendimento humano no WhatsApp",
-                stageName: stages[0]?.nome || "Conversas",
-              }).catch((err) => console.error("[lead-handover forward error]", err?.message));
-            } catch (e: any) {
-              console.error("[lead-handover import error]", e?.message);
-            }
-
             await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            // Registra a transferência no sistema: fila "Aguardando humano" + ficha atualizada.
+            const { registrarTransferenciaHumano } = await import("@/lib/ficha-atendimento.server");
+            await registrarTransferenciaHumano({
+              admin: supabaseAdmin, companyId, userId, numero: number,
+              motivo: "Cliente pediu para falar com um atendente",
+            });
             return new Response("human-handover", { status: 200 });
           }
           const { data: pauseRow } = await supabaseAdmin
