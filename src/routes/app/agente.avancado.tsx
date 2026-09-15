@@ -64,8 +64,9 @@ const PROVIDER_MODELS: Record<string, { value: string; label: string }[]> = {
     { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
   ],
   anthropic: [
-    { value: "claude-3-5-haiku-latest", label: "Claude 3.5 Haiku (rápido)" },
-    { value: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet (premium)" },
+    { value: "claude-opus-5", label: "Claude Opus 5 (mais inteligente)" },
+    { value: "claude-sonnet-5", label: "Claude Sonnet 5 (equilíbrio)" },
+    { value: "claude-haiku-4-5", label: "Claude Haiku 4.5 (mais rápido e barato)" },
   ],
 };
 
@@ -260,7 +261,7 @@ function AgentePage() {
                         OpenAI (GPT) — sua chave{!allowOpenAI ? " · Pro/Business" : ""}
                       </SelectItem>
                       <SelectItem value="anthropic" disabled={!allowAnthropic}>
-                        Anthropic (Claude) — sua chave{!allowAnthropic ? " · Pro/Business" : ""}
+                        Anthropic (Claude){!allowAnthropic ? " · Pro/Business" : ""}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -292,9 +293,9 @@ function AgentePage() {
                 )}
                 {cfg.ai_provider === "anthropic" && (
                   <div className="space-y-1.5">
-                    <Label>Chave Anthropic (sk-ant-...)</Label>
-                    <Input type="password" value={cfg.anthropic_api_key} onChange={(e) => up("anthropic_api_key", e.target.value)} placeholder="sk-ant-..." />
-                    <p className="text-xs text-muted-foreground">Pegue em console.anthropic.com → API Keys.</p>
+                    <Label>Chave Anthropic própria (opcional)</Label>
+                    <Input type="password" value={cfg.anthropic_api_key} onChange={(e) => up("anthropic_api_key", e.target.value)} placeholder="Vazio = usa a chave do sistema" />
+                    <p className="text-xs text-muted-foreground">Deixe vazio para usar a chave configurada no servidor (ANTHROPIC_API_KEY). Para usar uma chave só desta empresa, pegue em console.anthropic.com → API Keys.</p>
                   </div>
                 )}
 

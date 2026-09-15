@@ -1,7 +1,9 @@
 // Multi-provider AI chat.
 // Gemini (Google): usa GEMINI_API_KEY (chave própria) chamando o Google direto;
 //   se não houver, cai no gateway do Lovable (só existe no ambiente Lovable).
-// OpenAI e Anthropic usam a chave da própria empresa (agent_config).
+// Anthropic (Claude): chave da empresa (agent_config) ou, se vazia, ANTHROPIC_API_KEY do ambiente.
+// OpenAI usa a chave da própria empresa (agent_config).
+import Anthropic from "@anthropic-ai/sdk";
 
 export interface ChatMsg {
   role: "system" | "user" | "assistant";
@@ -35,10 +37,11 @@ export async function lovableAiChat(
     return openAiChat(key, model, messages);
   }
   if (provider === "anthropic") {
-    const key = cfg.anthropicKey?.trim();
-    if (!key) throw new Error("Chave Anthropic (Claude) não configurada na sua empresa.");
-    const model = cfg.model || "claude-3-5-sonnet-latest";
-    return anthropicChat(key, model, messages);
+    const key = cfg.anthropicKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
+    if (!key) {
+      throw new Error("Chave Anthropic (Claude) não configurada: defina ANTHROPIC_API_KEY no ambiente ou na sua empresa.");
+    }
+    return anthropicChat(key, resolveClaudeModel(cfg.model), messages);
   }
   // default: Gemini (Google). Prioriza SUA chave direta; só cai no gateway do Lovable se não houver.
   const googleKey = cfg.geminiKey?.trim() || process.env.GEMINI_API_KEY?.trim();
@@ -182,31 +185,54 @@ async function openAiChat(key: string, model: string, messages: ChatMsg[]): Prom
   return data?.choices?.[0]?.message?.content?.toString().trim() || "";
 }
 
+export const CLAUDE_DEFAULT_MODEL = "claude-opus-5";
+const CLAUDE_MODELS = new Set(["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]);
+
+// Configs antigas guardaram modelos Claude 3.x já descontinuados pela Anthropic.
+function resolveClaudeModel(model?: string): string {
+  return model && CLAUDE_MODELS.has(model) ? model : CLAUDE_DEFAULT_MODEL;
+}
+
 async function anthropicChat(key: string, model: string, messages: ChatMsg[]): Promise<string> {
+  const client = new Anthropic({ apiKey: key, timeout: 90_000 });
   const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
-  const conv = messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({ role: m.role, content: m.content }));
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model, max_tokens: 1024, system, messages: conv }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Anthropic: ${res.status} ${t.slice(0, 200)}`);
+  const conv: Anthropic.Beta.BetaMessageParam[] = messages
+    .filter((m) => m.role !== "system" && m.content?.trim())
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+  // A conversa precisa começar pelo cliente (histórico pode abrir com mensagem de campanha).
+  while (conv.length && conv[0].role !== "user") conv.shift();
+  if (!conv.length) return "";
+
+  try {
+    const response = await client.beta.messages.create({
+      model,
+      max_tokens: 16000,
+      ...(system ? { system } : {}),
+      messages: conv,
+      // Opus 5: se o classificador de segurança recusar, a própria API refaz no modelo de fallback recomendado.
+      ...(model === "claude-opus-5" ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+    });
+    if (response.stop_reason === "refusal") {
+      console.warn("[anthropic] resposta recusada", response.stop_details?.category ?? null);
+      return "";
+    }
+    return response.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+  } catch (error) {
+    if (error instanceof Anthropic.AuthenticationError) {
+      throw new Error("Anthropic: chave inválida. Verifique a ANTHROPIC_API_KEY.");
+    }
+    if (error instanceof Anthropic.RateLimitError) {
+      throw new Error("Anthropic: limite de uso atingido. Tente em alguns minutos.");
+    }
+    if (error instanceof Anthropic.APIError) {
+      throw new Error(`Anthropic: ${error.status ?? ""} ${error.message}`.trim());
+    }
+    throw error;
   }
-  const data = await res.json();
-  const txt = (data?.content || [])
-    .filter((p: any) => p?.type === "text")
-    .map((p: any) => p.text)
-    .join("\n")
-    .trim();
-  return txt;
 }
 
 // Erros transitórios da Google: sobrecarga (503), limite momentâneo (429) e falhas de gateway.
