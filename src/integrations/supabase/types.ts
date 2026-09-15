@@ -74,7 +74,9 @@ export type Database = {
           anthropic_api_key: string
           apresentacao: string
           assinar_mensagens: boolean | null
+          base_conhecimento: string
           chamar_por_nome: boolean | null
+          chave_pix: string
           como_vender: string
           company_id: string
           cupom: string
@@ -91,6 +93,7 @@ export type Database = {
           horarios_atendimento: Json
           horarios_disponiveis: string
           idioma: string | null
+          instrucoes_pagamento: string
           mensagem_fora_horario: string
           nao_pode_fazer: string
           nome_agente: string
@@ -121,6 +124,7 @@ export type Database = {
           tamanho_resposta: string
           telefone_transferencia: string
           ticket_medio: string
+          titular_pix: string
           tom: number
           updated_at: string
           usar_emojis: boolean
@@ -136,7 +140,9 @@ export type Database = {
           anthropic_api_key?: string
           apresentacao?: string
           assinar_mensagens?: boolean | null
+          base_conhecimento?: string
           chamar_por_nome?: boolean | null
+          chave_pix?: string
           como_vender?: string
           company_id: string
           cupom?: string
@@ -153,6 +159,7 @@ export type Database = {
           horarios_atendimento?: Json
           horarios_disponiveis?: string
           idioma?: string | null
+          instrucoes_pagamento?: string
           mensagem_fora_horario?: string
           nao_pode_fazer?: string
           nome_agente?: string
@@ -183,6 +190,7 @@ export type Database = {
           tamanho_resposta?: string
           telefone_transferencia?: string
           ticket_medio?: string
+          titular_pix?: string
           tom?: number
           updated_at?: string
           usar_emojis?: boolean
@@ -198,7 +206,9 @@ export type Database = {
           anthropic_api_key?: string
           apresentacao?: string
           assinar_mensagens?: boolean | null
+          base_conhecimento?: string
           chamar_por_nome?: boolean | null
+          chave_pix?: string
           como_vender?: string
           company_id?: string
           cupom?: string
@@ -215,6 +225,7 @@ export type Database = {
           horarios_atendimento?: Json
           horarios_disponiveis?: string
           idioma?: string | null
+          instrucoes_pagamento?: string
           mensagem_fora_horario?: string
           nao_pode_fazer?: string
           nome_agente?: string
@@ -245,6 +256,7 @@ export type Database = {
           tamanho_resposta?: string
           telefone_transferencia?: string
           ticket_medio?: string
+          titular_pix?: string
           tom?: number
           updated_at?: string
           usar_emojis?: boolean

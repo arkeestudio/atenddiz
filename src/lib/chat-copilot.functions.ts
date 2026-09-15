@@ -168,7 +168,7 @@ export const sendPixPayment = createServerFn({ method: "POST" })
 
     const pixCode = generatePixCopyPaste({
       chave: chavePix,
-      nome: (cfg as any)?.nome_titular_pix || (cfg as any)?.nome_empresa || "Atendimento",
+      nome: (cfg as any)?.titular_pix || (cfg as any)?.nome_empresa || "Atendimento",
       cidade: (cfg as any)?.cidade_pix || "BRASIL",
       valor,
       infoAdicional: data.descricao || "Pedido WhatsApp",

@@ -535,7 +535,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               const { generatePixCopyPaste } = await import("@/lib/pix");
               const pixCode = generatePixCopyPaste({
                 chave: chavePix,
-                nome: (cfg as any)?.nome_titular_pix || "Atendimento",
+                nome: (cfg as any)?.titular_pix || (cfg as any)?.nome_empresa || "Atendimento",
                 cidade: (cfg as any)?.cidade_pix || "BRASIL",
                 valor: pixValor,
                 infoAdicional: "Pedido WhatsApp",
