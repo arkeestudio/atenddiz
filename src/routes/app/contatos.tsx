@@ -161,9 +161,9 @@ function ContatosPage() {
                 <li key={c.id}>
                   <button onClick={() => setActive(c)} className="w-full grid grid-cols-12 px-5 py-3.5 items-center text-[14px] text-left hover:bg-[color:var(--panel-2)] transition-colors">
                     <div className="col-span-4 flex items-center gap-3 min-w-0">
-                      <InitialsAvatar name={c.nome || c.numero} size={36} />
+                      <InitialsAvatar name={c.nome || c.nome_whatsapp || c.numero} size={36} src={c.foto_url} />
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">{c.nome || "—"}</div>
+                        <div className="font-semibold truncate">{c.nome || c.nome_whatsapp || "—"}</div>
                         <div className="text-xs text-muted-foreground truncate">{(c.tags ?? []).slice(0, 3).join(", ") || c.origem || "—"}</div>
                       </div>
                     </div>

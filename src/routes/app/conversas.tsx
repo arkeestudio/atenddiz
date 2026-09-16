@@ -549,7 +549,7 @@ function ConversasPage() {
     const map = new Map<string, { numero: string; nome: string | null; last: Msg }>();
     for (const m of msgs) {
       const card = cards[m.numero];
-      const name = card?.nome || m.contato_nome || null;
+      const name = card?.nome || card?.nome_whatsapp || m.contato_nome || null;
       const cur = map.get(m.numero);
       if (!cur) {
         map.set(m.numero, { numero: m.numero, nome: name, last: m });
@@ -828,7 +828,7 @@ function ConversasPage() {
                     }`}
                   >
                     {on && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[color:var(--brand)]" />}
-                    <InitialsAvatar name={c.nome || c.numero} size={40} />
+                    <InitialsAvatar name={c.nome || c.numero} size={40} src={card?.foto_url} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <b className="text-[13.5px] truncate">{c.nome || c.numero}</b>
@@ -871,7 +871,7 @@ function ConversasPage() {
           ) : (
             <>
               <header className="flex items-center gap-3 px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)] flex-wrap">
-                <InitialsAvatar name={activeConv?.nome || active} size={38} />
+                <InitialsAvatar name={activeConv?.nome || active} size={38} src={activeCard?.foto_url} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm truncate">{activeConv?.nome || active}</span>
@@ -1233,7 +1233,7 @@ function ConversasPage() {
           ) : (
             <>
               <div className="flex flex-col items-center text-center gap-2 pb-4 border-b border-[color:var(--hairline)]">
-                <InitialsAvatar name={activeConv?.nome || active} size={72} />
+                <InitialsAvatar name={activeConv?.nome || active} size={72} src={activeCard?.foto_url} />
                 <div>
                   <div className="font-semibold text-sm">{activeConv?.nome || active}</div>
                   <div className="text-[11.5px] text-muted-foreground font-mono">{active}</div>

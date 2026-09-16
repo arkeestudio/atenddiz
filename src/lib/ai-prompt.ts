@@ -214,6 +214,8 @@ export function buildSystemPrompt(
     produtos?: ProdutoBrief[];
     stages?: StageBrief[];
     googleConectado?: boolean;
+    /** Memória do sistema sobre o contato (ficha), para não reenviar a conversa inteira. */
+    ficha?: { campos?: Record<string, string> | null; resumo?: string | null };
   },
 ): string {
   const partes = opts?.responderEmPartes ?? c.responder_em_partes ?? true;
@@ -242,6 +244,18 @@ export function buildSystemPrompt(
   // Instruções de PIX só fazem sentido se a empresa cadastrou chave (senão contradizem "não cobramos por WhatsApp").
   const temPix = !!c.chave_pix?.trim();
   const fichaCampos = normalizeFichaCampos((c as any).ficha_campos);
+
+  // Ficha = memória do contato guardada no sistema. Vale mais que reenviar a conversa inteira.
+  const fichaValores = opts?.ficha?.campos || {};
+  const fichaLinhas = fichaCampos
+    .map((f) => (fichaValores[f.id]?.trim() ? `• ${f.label}: ${fichaValores[f.id].trim()}` : ""))
+    .filter(Boolean);
+  const fichaBloco =
+    fichaLinhas.length || opts?.ficha?.resumo?.trim()
+      ? `O QUE JÁ SABEMOS DESTE CONTATO (ficha do sistema — não pergunte de novo o que já está aqui):\n${
+          opts?.ficha?.resumo?.trim() ? `${opts.ficha.resumo.trim()}\n` : ""
+        }${fichaLinhas.join("\n")}`
+      : "";
 
   const stageNames = stages.map((s) => s.nome).join(" | ");
   const stagesFinaisNomes = stages.filter((s) => s.tipo === "ganho" || s.tipo === "perda").map((s) => s.nome);
@@ -319,8 +333,6 @@ Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma
     fichaCampos.length
       ? `INFORMAÇÕES QUE A EQUIPE PRECISA (ficha do atendimento): ao longo da conversa, descubra com naturalidade, uma pergunta por vez e só quando fizer sentido (nunca em formato de questionário): ${fichaCampos.map((f) => f.label).join("; ")}. Não pergunte de novo o que o cliente já contou.`
       : "",
-    opts?.resumoContato ? `Contexto do contato: ${opts.resumoContato}` : "",
-    opts?.estagioAtual ? `Estágio atual no CRM: ${opts.estagioAtual}.` : "",
     `MÉTODO DE ATENDIMENTO (siga sempre):
 1. Cumprimente com naturalidade só na PRIMEIRA mensagem da conversa. Depois NÃO repita saudação.
 2. Antes de oferecer qualquer coisa, ENTENDA a necessidade do cliente. Faça UMA pergunta por vez (nunca várias juntas).
@@ -374,6 +386,12 @@ Escolha 1 entre as etapas reais do CRM da empresa listadas acima que melhor refl
         : "") +
       `Esse marcador é interno, NÃO aparece pro cliente.`,
   );
+
+  // Por último o que muda de contato para contato. Tudo acima é igual em toda chamada,
+  // e provedores como o Gemini cobram menos por esse trecho inicial repetido (cache).
+  if (opts?.resumoContato) blocos.push(`Contexto do contato: ${opts.resumoContato}`);
+  if (fichaBloco) blocos.push(fichaBloco);
+  if (opts?.estagioAtual) blocos.push(`Estágio atual no CRM: ${opts.estagioAtual}.`);
 
   return blocos.filter(Boolean).join("\n\n");
 }

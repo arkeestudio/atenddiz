@@ -361,9 +361,9 @@ function CardBody({ card, dragging }: { card: LeadCard; dragging?: boolean }) {
         : "border-[var(--border)] shadow-xs hover:border-[var(--brand)]/40 hover:shadow-md hover:-translate-y-0.5"
     }`}>
       <div className="flex items-start gap-3">
-        <InitialsAvatar name={card.nome || card.numero} size={38} className="shrink-0 font-medium" />
+        <InitialsAvatar name={card.nome || card.nome_whatsapp || card.numero} size={38} className="shrink-0 font-medium" src={card.foto_url} />
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold truncate text-foreground leading-tight">{card.nome || card.numero}</div>
+          <div className="text-[14px] font-semibold truncate text-foreground leading-tight">{card.nome || card.nome_whatsapp || card.numero}</div>
           <div className="text-[11px] text-muted-foreground font-mono truncate mt-0.5">{card.numero}</div>
         </div>
       </div>
@@ -583,10 +583,10 @@ function LeadRecoveryDialog({
                     className="py-3 flex items-center justify-between gap-3 hover:bg-[var(--panel-2)]/60 px-2 rounded-lg transition"
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <InitialsAvatar name={c.nome || c.numero} size={36} />
+                      <InitialsAvatar name={c.nome || c.nome_whatsapp || c.numero} size={36} src={c.foto_url} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold truncate">{c.nome || c.numero}</span>
+                          <span className="text-sm font-semibold truncate">{c.nome || c.nome_whatsapp || c.numero}</span>
                           {stage && (
                             <span
                               className="text-[10px] px-2 py-0.5 rounded-full font-medium text-white"

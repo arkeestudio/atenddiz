@@ -52,7 +52,7 @@ export async function atualizarFichaComIa(opts: {
       .eq("company_id", companyId)
       .eq("numero", numero)
       .order("created_at", { ascending: false })
-      .limit(60),
+      .limit(30),
   ]);
   if (!card) return null;
 
@@ -143,13 +143,15 @@ export async function atualizarFichaSeNecessario(opts: { admin: any; companyId: 
   try {
     const { data: card } = await opts.admin
       .from("crm_cards")
-      .select("ficha_atualizada_em")
+      .select("ficha_atualizada_em, ultima_em")
       .eq("company_id", opts.companyId)
       .eq("numero", opts.numero)
       .maybeSingle();
     if (!card) return;
     const last = card.ficha_atualizada_em ? new Date(card.ficha_atualizada_em).getTime() : 0;
     if (Date.now() - last < FICHA_AUTO_INTERVAL_MS) return;
+    // Nada novo desde a última leitura: não gasta uma chamada de IA à toa.
+    if (last && card.ultima_em && new Date(card.ultima_em).getTime() <= last) return;
     await atualizarFichaComIa(opts);
   } catch (e: any) {
     console.warn("[ficha] atualização automática falhou:", e?.message);

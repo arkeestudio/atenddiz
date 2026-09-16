@@ -57,21 +57,32 @@ export async function runAiReply(opts: {
     imagem_url: (p as any).imagem_url ?? null,
   }));
 
+  // 12 mensagens em vez do histórico inteiro: o que é antigo já está resumido na ficha,
+  // que vai no prompt. Menos tokens por resposta, sem perder o contexto do contato.
   const { data: histDesc } = await supabaseAdmin
     .from("mensagens")
     .select("autor,direcao,texto,created_at")
     .eq("company_id", companyId)
     .eq("numero", number)
     .order("created_at", { ascending: false })
-    .limit(25);
+    .limit(12);
   const historico = ((histDesc ?? []) as any[]).slice().reverse();
 
-  const { data: cardRow } = await supabaseAdmin
+  let { data: cardRow } = await supabaseAdmin
     .from("crm_cards")
-    .select("status, nome, stage_id")
+    .select("status, nome, stage_id, ficha, ficha_resumo")
     .eq("company_id", companyId)
     .eq("numero", number)
     .maybeSingle();
+  if (!cardRow) {
+    // Banco ainda sem a migração da ficha: segue sem ela.
+    ({ data: cardRow } = await supabaseAdmin
+      .from("crm_cards")
+      .select("status, nome, stage_id")
+      .eq("company_id", companyId)
+      .eq("numero", number)
+      .maybeSingle());
+  }
   const estagioAtual = cardRow?.status || stages[0]?.nome || "Conversas";
   const resumoContato = `${cardRow?.nome || pushName || "Contato"} (${number}), ${historico.length} mensagens trocadas`;
 
@@ -89,6 +100,7 @@ export async function runAiReply(opts: {
     produtos,
     stages: stages.map((s) => ({ nome: s.nome, tipo: s.tipo })),
     googleConectado: !!googleIntegration?.conectado,
+    ficha: { campos: (cardRow as any)?.ficha ?? null, resumo: (cardRow as any)?.ficha_resumo ?? null },
   });
 
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
@@ -246,6 +258,10 @@ export async function runAiReply(opts: {
     },
   );
 
+  // Contato novo: busca nome e foto de perfil depois que o card existe.
+  const { sincronizarPerfilContato } = await import("@/lib/contato-perfil.server");
+  await sincronizarPerfilContato({ admin: supabaseAdmin, companyId, instanceName, numero: number });
+
   // Ficha do atendimento: na transferência a equipe é avisada no painel (sem WhatsApp para terceiros);
   // fora dela, a ficha é mantida atualizada em intervalos.
   const ficha = await import("@/lib/ficha-atendimento.server");
@@ -324,10 +340,12 @@ export async function upsertCard(
   if (proposed && !isLocked) finalStage = proposed;
   if (!finalStage) finalStage = stages[0];
 
+  // `nome` aqui é o nome do perfil de quem ESCREVEU. Só chega preenchido em mensagem recebida
+  // (mensagem enviada pelo celular traz o nome do próprio número e renomearia o contato).
+  const nomeWhatsapp = nome?.trim() || null;
   let cardName = existing?.nome || null;
-  if (nome && nome.trim() && (!cardName || cardName === numero || /^\d+$/.test(cardName.replace(/\D/g, "")))) {
-    cardName = nome.trim();
-  }
+  const nomeGenerico = !cardName || cardName === numero || /^\d+$/.test(cardName.replace(/\D/g, ""));
+  if (nomeWhatsapp && nomeGenerico) cardName = nomeWhatsapp;
 
   const payload: any = {
     company_id: companyId,
@@ -337,6 +355,7 @@ export async function upsertCard(
     ultima_mensagem: ultimaMensagem.slice(0, 240),
     ultima_em: new Date().toISOString(),
   };
+  if (nomeWhatsapp) payload.nome_whatsapp = nomeWhatsapp;
   if (finalStage) {
     payload.stage_id = finalStage.id;
     payload.status = finalStage.nome;
@@ -353,11 +372,22 @@ export async function upsertCard(
     payload.observacao = extra.observacao;
   }
 
-  const { data: savedCard } = await admin
+  let { data: savedCard, error: upsertErr } = await admin
     .from("crm_cards")
     .upsert(payload, { onConflict: "company_id,numero" })
     .select("id")
     .maybeSingle();
+  if (upsertErr && payload.nome_whatsapp && /nome_whatsapp/i.test(upsertErr.message || "")) {
+    // Banco ainda sem a migração de nome/foto do contato: grava o resto.
+    delete payload.nome_whatsapp;
+    ({ data: savedCard } = await admin
+      .from("crm_cards")
+      .upsert(payload, { onConflict: "company_id,numero" })
+      .select("id")
+      .maybeSingle());
+  } else if (upsertErr) {
+    console.error("[upsertCard]", upsertErr.message);
+  }
 
   const cardId = savedCard?.id || existing?.id;
   if (extra?.isReceipt && cardId && extra?.observacao) {

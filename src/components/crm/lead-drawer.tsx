@@ -16,6 +16,7 @@ import { FichaAtendimento, type FichaCard } from "@/components/ficha/ficha-atend
 
 export interface LeadCard extends FichaCard {
   id: string; numero: string; nome: string | null;
+  nome_whatsapp?: string | null; foto_url?: string | null;
   status: string; stage_id: string | null;
   ultima_mensagem: string | null; ultima_em: string;
   observacao: string | null; valor: number | null;
@@ -63,7 +64,7 @@ export function LeadDrawer({
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto bg-[var(--panel)] border-l border-[var(--border)]">
         <SheetHeader className="pb-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
-            <InitialsAvatar name={local.nome || local.numero} size={48} />
+            <InitialsAvatar name={local.nome || local.nome_whatsapp || local.numero} size={48} src={local.foto_url} />
             <div className="min-w-0 flex-1">
               <SheetTitle className="truncate text-base">{local.nome || local.numero}</SheetTitle>
               <div className="text-xs text-muted-foreground font-mono">{local.numero}</div>

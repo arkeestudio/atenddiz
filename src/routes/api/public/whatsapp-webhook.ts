@@ -76,18 +76,33 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const number = extractPhoneNumber(data, key);
           if (!number) return new Response("no valid number", { status: 200 });
 
-          const pushName: string | undefined =
-            data?.pushName ||
-            data?.sender?.pushname ||
-            data?.sender?.name ||
-            data?.sender?.formattedName ||
-            data?.chat?.name ||
-            data?.chat?.formattedTitle ||
-            data?.contact?.name ||
-            data?.contact?.formattedName;
+          // Nome de quem escreveu. Em mensagem enviada pelo celular isso é o nome do PRÓPRIO
+          // número (ex: "ARKE Estúdio"), que não pode virar o nome do contato.
+          const pushName: string | undefined = fromMe
+            ? undefined
+            : data?.pushName ||
+              data?.sender?.pushname ||
+              data?.sender?.name ||
+              data?.sender?.formattedName ||
+              data?.chat?.name ||
+              data?.chat?.formattedTitle ||
+              data?.contact?.name ||
+              data?.contact?.formattedName;
           const msg = data?.message ?? {};
+          // Sticker, figurinha e mídia sem `type`/`mimetype` chegam do OpenWA com o arquivo
+          // inteiro no `body`. Detecta pela assinatura do base64 para não virar texto na conversa.
+          const corpoBruto = typeof data?.body === "string" ? data.body.trim() : "";
+          const bodyEhBase64 =
+            /^(data:[^;,]{0,60};base64,|\/9j\/|iVBORw0KGgo|R0lGOD|UklGR|T2dnUw|SUQz|AAAA[A-Za-z0-9+/])/.test(corpoBruto) ||
+            (corpoBruto.length > 512 && !/\s/.test(corpoBruto) && /^[A-Za-z0-9+/=]+$/.test(corpoBruto));
           const audioMsg = msg.audioMessage || (data?.type === "ptt" || data?.type === "audio" ? data : null);
-          const imageMsg = msg.imageMessage || (data?.type === "image" || (data?.mimetype && String(data.mimetype).startsWith("image/")) ? data : null);
+          const imageMsg =
+            msg.imageMessage ||
+            (data?.type === "image" ||
+            (data?.mimetype && String(data.mimetype).startsWith("image/")) ||
+            (bodyEhBase64 && !audioMsg)
+              ? data
+              : null);
           // No OpenWA o `body` de mídia é o conteúdo/miniatura em base64, não texto: usa só a legenda.
           const isOpenwaMedia = !data?.message && (audioMsg || imageMsg);
           let text: string =
@@ -95,7 +110,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             msg.extendedTextMessage?.text ||
             msg.imageMessage?.caption ||
             msg.videoMessage?.caption ||
-            (isOpenwaMedia ? data?.caption : data?.body) ||
+            (isOpenwaMedia || bodyEhBase64 ? data?.caption : data?.body) ||
             data?.text ||
             data?.content ||
             "";
@@ -231,6 +246,12 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             }
             text = transcript;
           }
+
+          // Nome e foto de perfil do contato (renovados a cada poucos dias).
+          try {
+            const { sincronizarPerfilContato } = await import("@/lib/contato-perfil.server");
+            await sincronizarPerfilContato({ admin: supabaseAdmin, companyId, instanceName, numero: number });
+          } catch (e: any) { console.warn("[perfil-contato]", e?.message); }
 
           // Dispara webhooks externos (best-effort, não bloqueia)
           try {
