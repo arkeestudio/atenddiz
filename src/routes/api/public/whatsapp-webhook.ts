@@ -80,14 +80,18 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           // número (ex: "ARKE Estúdio"), que não pode virar o nome do contato.
           const pushName: string | undefined = fromMe
             ? undefined
-            : data?.pushName ||
-              data?.sender?.pushname ||
-              data?.sender?.name ||
-              data?.sender?.formattedName ||
-              data?.chat?.name ||
-              data?.chat?.formattedTitle ||
-              data?.contact?.name ||
-              data?.contact?.formattedName;
+            : [
+                data?.pushName,
+                data?.sender?.pushname,
+                data?.sender?.name,
+                data?.sender?.formattedName,
+                data?.chat?.name,
+                data?.chat?.formattedTitle,
+                data?.contact?.name,
+                data?.contact?.formattedName,
+              ]
+                .map(nomeContatoValido)
+                .find(Boolean);
           const msg = data?.message ?? {};
           // Sticker, figurinha e mídia sem `type`/`mimetype` chegam do OpenWA com o arquivo
           // inteiro no `body`. Detecta pela assinatura do base64 para não virar texto na conversa.
@@ -458,6 +462,20 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
   },
 });
 
+// O OpenWA às vezes manda a string "null"/"undefined" no lugar do nome, e isso ia
+// parar no banco como se fosse o nome do contato.
+function nomeContatoValido(n: any): string | undefined {
+  const s = typeof n === "string" ? n.trim() : "";
+  if (!s || s === "null" || s === "undefined") return undefined;
+  return s;
+}
+
+function jid(v: any): string | null {
+  if (typeof v === "string") return v;
+  if (typeof v?._serialized === "string") return v._serialized;
+  return null;
+}
+
 function extractPhoneNumber(data: any, key: any): string | null {
   const isGroup =
     data?.from?.endsWith("@g.us") ||
@@ -467,53 +485,40 @@ function extractPhoneNumber(data: any, key: any): string | null {
 
   const isFromMe = !!(key?.fromMe ?? data?.fromMe);
 
-  const candidates: Array<string | undefined | null> = [
-    typeof data?.chatId === "string" ? data.chatId : null,
-    typeof data?.chat?.id === "string" ? data.chat.id : data?.chat?.id?._serialized,
-    typeof data?.sender?.id === "string" ? data.sender.id : data?.sender?.id?._serialized,
-    typeof data?.contact?.id === "string" ? data.contact.id : data?.contact?.id?._serialized,
-    typeof data?.author === "string" ? data.author : null,
-    typeof data?.from === "string" ? data.from : null,
-    typeof data?.to === "string" ? data.to : null,
-    typeof key?.remoteJid === "string" ? key.remoteJid : null,
-  ];
+  // Em mensagem enviada por nós, `sender`/`author`/`from` são o NOSSO número. Se esses
+  // campos entrarem na busca, a resposta é arquivada na conversa da própria conta e os
+  // atendimentos de clientes diferentes se misturam numa thread só. Para fromMe, só
+  // valem campos do destinatário — sem cair na lista geral quando o JID vem como @lid.
+  const candidates: Array<string | null> = isFromMe
+    ? [jid(data?.to), jid(data?.chatId), jid(data?.chat?.id), jid(key?.remoteJid)]
+    : [
+        jid(data?.chatId),
+        jid(data?.chat?.id),
+        jid(data?.sender?.id),
+        jid(data?.contact?.id),
+        jid(data?.author),
+        jid(data?.from),
+        jid(data?.to),
+        jid(key?.remoteJid),
+      ];
 
-  if (isFromMe) {
-    const toCandidates = [
-      typeof data?.to === "string" ? data.to : null,
-      typeof data?.chatId === "string" ? data.chatId : null,
-      typeof key?.remoteJid === "string" ? key.remoteJid : null,
-    ];
-    for (const c of toCandidates) {
-      if (c && (c.endsWith("@c.us") || c.endsWith("@s.whatsapp.net"))) {
-        const num = c.split("@")[0].replace(/\D/g, "");
-        if (num && num.length >= 8 && num.length <= 15) return num;
-      }
-    }
-  }
-
-  for (const c of candidates) {
-    if (c && (c.endsWith("@c.us") || c.endsWith("@s.whatsapp.net"))) {
+  const pick = (aceita: (c: string) => boolean): string | null => {
+    for (const c of candidates) {
+      if (!c || !aceita(c)) continue;
       const num = c.split("@")[0].replace(/\D/g, "");
       if (num && num.length >= 8 && num.length <= 15) return num;
     }
-  }
+    return null;
+  };
 
-  for (const c of candidates) {
-    if (c && !c.endsWith("@lid") && !c.endsWith("@g.us") && !c.endsWith("@newsletter") && !c.endsWith("@broadcast")) {
-      const num = c.split("@")[0].replace(/\D/g, "");
-      if (num && num.length >= 8 && num.length <= 15) return num;
-    }
-  }
-
-  for (const c of candidates) {
-    if (c && c.includes("@")) {
-      const num = c.split("@")[0].replace(/\D/g, "");
-      if (num && num.length >= 8 && num.length <= 15) return num;
-    }
-  }
-
-  return null;
+  return (
+    pick((c) => c.endsWith("@c.us") || c.endsWith("@s.whatsapp.net")) ??
+    pick(
+      (c) =>
+        !c.endsWith("@lid") && !c.endsWith("@g.us") && !c.endsWith("@newsletter") && !c.endsWith("@broadcast"),
+    ) ??
+    pick((c) => c.includes("@"))
+  );
 }
 
 // Tempo sem atividade humana após o qual uma conversa pausada volta para a IA.
