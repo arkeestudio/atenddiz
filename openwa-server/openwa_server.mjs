@@ -197,30 +197,46 @@ async function getOrCreateSession(name, webhookUrl) {
         return;
       }
 
-      // If message is from a @lid, resolve to real phone number
+      // Converte @lid para o telefone real. CADA campo é resolvido separadamente:
+      // `from` é quem enviou e `chatId`/`to` são a conversa. Numa mensagem enviada por nós
+      // (fromMe) o `from` somos nós, então reaproveitar esse resultado no `chatId` arquiva
+      // a mensagem na conversa da própria conta e mistura os atendimentos.
       const page = s.client?._page || s.client?.page;
-      if (page && (from.endsWith('@lid') || message.chatId?.endsWith('@lid') || message.author?.endsWith('@lid'))) {
-        try {
-          const lidToResolve = from.endsWith('@lid') ? from : (message.chatId || message.author);
-          const resolvedPn = await page.evaluate((lidStr) => {
-            try {
-              const widFactory = window.require("WAWebWidFactory");
-              const lidUtils = window.require("WAWebLidMigrationUtils");
-              const wid = widFactory.createWid(lidStr);
-              const res = lidUtils.toPn(wid);
-              return res ? (res._serialized || String(res)) : null;
-            } catch (e) {
-              return null;
-            }
-          }, lidToResolve);
-          if (resolvedPn) {
-            console.log(`[OpenWA Server] Resolved LID ${lidToResolve} -> ${resolvedPn}`);
-            if (from.endsWith('@lid')) message.from = resolvedPn;
-            if (message.chatId && message.chatId.endsWith('@lid')) message.chatId = resolvedPn;
-            if (message.sender) message.sender.phoneNumber = resolvedPn.split('@')[0];
-            from = message.from;
+      const ehLid = (v) => typeof v === 'string' && v.endsWith('@lid');
+      if (page && (ehLid(from) || ehLid(message.chatId) || ehLid(message.to) || ehLid(message.author))) {
+        const resolverLid = async (lidStr) => {
+          try {
+            const pn = await page.evaluate((s) => {
+              try {
+                const widFactory = window.require("WAWebWidFactory");
+                const lidUtils = window.require("WAWebLidMigrationUtils");
+                const res = lidUtils.toPn(widFactory.createWid(s));
+                return res ? (res._serialized || String(res)) : null;
+              } catch (e) {
+                return null;
+              }
+            }, lidStr);
+            if (pn) console.log(`[OpenWA Server] Resolved LID ${lidStr} -> ${pn}`);
+            return pn;
+          } catch (e) {
+            return null;
           }
-        } catch (e) {}
+        };
+
+        if (ehLid(from)) {
+          const pn = await resolverLid(from);
+          if (pn) {
+            message.from = pn;
+            from = pn;
+            if (message.sender) message.sender.phoneNumber = pn.split('@')[0];
+          }
+        }
+        for (const campo of ['chatId', 'to', 'author']) {
+          if (ehLid(message[campo])) {
+            const pn = await resolverLid(message[campo]);
+            if (pn) message[campo] = pn;
+          }
+        }
       }
 
       console.log(`[OpenWA Server] Message received from ${message.from} (fromMe: ${message.fromMe}) for ${name}`);
