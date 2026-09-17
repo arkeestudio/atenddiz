@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HelpTip } from "@/components/help-tip";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -988,15 +988,28 @@ function ConversasPage() {
                 </div>
               </header>
 
-              <div ref={threadRef} className="flex-1 overflow-auto p-4 flex flex-col gap-2.5">
-                {thread.map((m) => (
-                  <Bubble
-                    key={m.id}
-                    m={m}
-                    onTranscribe={handleTranscribeAudio}
-                    onPreviewImage={setImagePreviewUrl}
-                  />
-                ))}
+              <div ref={threadRef} className="flex-1 overflow-auto px-4 py-4 flex flex-col">
+                {thread.map((m, i) => {
+                  const anterior = thread[i - 1];
+                  const proxima = thread[i + 1];
+                  const novoDia = !anterior || !mesmoDia(anterior.created_at, m.created_at);
+                  // Uma "rajada" é a sequência do mesmo remetente dentro de 5 minutos: ela recebe
+                  // um rótulo e um horário só, em vez de repetir em cada balão.
+                  const primeira = novoDia || !mesmaRajada(anterior, m);
+                  const ultima = !proxima || !mesmaRajada(m, proxima) || !mesmoDia(m.created_at, proxima.created_at);
+                  return (
+                    <Fragment key={m.id}>
+                      {novoDia && <SeparadorData iso={m.created_at} />}
+                      <Bubble
+                        m={m}
+                        primeira={primeira}
+                        ultima={ultima}
+                        onTranscribe={handleTranscribeAudio}
+                        onPreviewImage={setImagePreviewUrl}
+                      />
+                    </Fragment>
+                  );
+                })}
               </div>
 
               {/* Quick replies & Copiloto IA */}
@@ -1532,19 +1545,62 @@ function FilterTabs({
   );
 }
 
+const NOTA_INTERNA = "🔒 [NOTA INTERNA]:";
+
+function mesmoDia(a: string, b: string) {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+// Notas internas nunca entram na rajada de outra mensagem: são um bloco à parte.
+function mesmaRajada(a: Msg | undefined, b: Msg | undefined) {
+  if (!a || !b) return false;
+  if (a.texto.startsWith(NOTA_INTERNA) || b.texto.startsWith(NOTA_INTERNA)) return false;
+  if (a.direcao !== b.direcao || a.autor !== b.autor) return false;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime() < 5 * 60_000;
+}
+
+function SeparadorData({ iso }: { iso: string }) {
+  const d = new Date(iso);
+  const hoje = new Date();
+  const ontem = new Date(hoje);
+  ontem.setDate(hoje.getDate() - 1);
+  const rotulo = mesmoDia(iso, hoje.toISOString())
+    ? "Hoje"
+    : mesmoDia(iso, ontem.toISOString())
+      ? "Ontem"
+      : d.toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "long",
+          ...(d.getFullYear() === hoje.getFullYear() ? {} : { year: "numeric" }),
+        });
+  return (
+    <div className="flex items-center gap-3 my-4 first:mt-0">
+      <div className="h-px flex-1 bg-[color:var(--hairline)]" />
+      <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground px-2.5 py-1 rounded-full bg-[color:var(--panel)] border border-[color:var(--hairline)]">
+        {rotulo}
+      </span>
+      <div className="h-px flex-1 bg-[color:var(--hairline)]" />
+    </div>
+  );
+}
+
 function Bubble({
   m,
+  primeira = true,
+  ultima = true,
   onTranscribe,
   onPreviewImage,
 }: {
   m: Msg;
+  primeira?: boolean;
+  ultima?: boolean;
   onTranscribe?: (msgId: string, currentText: string) => void;
   onPreviewImage?: (url: string) => void;
 }) {
-  const isInternal = m.texto.startsWith("🔒 [NOTA INTERNA]:");
+  const isInternal = m.texto.startsWith(NOTA_INTERNA);
   const isOut = m.direcao === "saida";
   const ia = m.autor === "ia";
-  const displayText = isInternal ? m.texto.replace("🔒 [NOTA INTERNA]:", "").trim() : m.texto;
+  const displayText = isInternal ? m.texto.replace(NOTA_INTERNA, "").trim() : m.texto;
   const isAudio = m.texto.includes("[Áudio]") || m.texto.includes("[Audio]") || m.texto.startsWith("🎤");
   // Transcrição em andamento esconde o botão; se ficou presa (>2 min), o botão volta para tentar de novo.
   const transcrevendo = m.texto.includes(TRANSCREVENDO) && Date.now() - new Date(m.created_at).getTime() < 120_000;
@@ -1558,12 +1614,12 @@ function Bubble({
 
   if (isInternal) {
     return (
-      <div className="flex justify-center my-1">
+      <div className="flex justify-center my-3">
         <div className="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 text-[13px] bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded-2xl shadow-sm">
           <div className="flex items-center gap-1.5 font-bold text-[10.5px] uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">
             <Lock className="size-3" /> Nota Interna — Visível apenas para a equipe
           </div>
-          <div className="whitespace-pre-wrap break-words">{displayText}</div>
+          <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{displayText}</div>
           <div className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-1 text-right">
             {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </div>
@@ -1573,15 +1629,15 @@ function Bubble({
   }
 
   return (
-    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div className={`flex ${isOut ? "justify-end" : "justify-start"} ${primeira ? "mt-3 first:mt-0" : "mt-0.5"}`}>
       <div
-        className={`max-w-[78%] sm:max-w-[62%] px-3.5 py-2.5 text-[13.5px] ${
+        className={`max-w-[min(62ch,78%)] px-3.5 py-2 text-[13.5px] leading-relaxed ${
           isOut
-            ? "bg-[color:var(--brand)] text-primary-foreground rounded-2xl rounded-br-md font-medium shadow-sm"
-            : "bg-[color:var(--panel)] text-foreground rounded-2xl rounded-bl-md border border-[color:var(--hairline)] shadow-sm"
+            ? `bg-[color:var(--brand)] text-primary-foreground font-medium shadow-sm rounded-2xl ${ultima ? "rounded-br-md" : ""}`
+            : `bg-[color:var(--panel)] text-foreground border border-[color:var(--hairline)] shadow-sm rounded-2xl ${ultima ? "rounded-bl-md" : ""}`
         }`}
       >
-        {isOut && (
+        {isOut && primeira && (
           <span className="block text-[9.5px] font-bold opacity-80 mb-1 uppercase tracking-wider">
             {ia ? "⚡ Agente IA" : "Atendente"}
           </span>
@@ -1596,7 +1652,7 @@ function Bubble({
             <div className="text-xs font-medium">{displayText}</div>
           </div>
         ) : (
-          <div className="whitespace-pre-wrap break-words">{displayText}</div>
+          <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{displayText}</div>
         )}
 
         {/* Visualização de imagem na thread */}
@@ -1637,10 +1693,12 @@ function Bubble({
             <Sparkles className="size-3" /> Transcrever Áudio com IA
           </button>
         )}
-        <div className={`text-[10.5px] mt-1 flex items-center gap-1 ${isOut ? "opacity-80 justify-end" : "text-muted-foreground"}`}>
-          {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-          {isOut && m.status_entrega && <DeliveryTick status={m.status_entrega} />}
-        </div>
+        {ultima && (
+          <div className={`text-[10.5px] mt-1 flex items-center gap-1 ${isOut ? "opacity-80 justify-end" : "text-muted-foreground"}`}>
+            {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            {isOut && m.status_entrega && <DeliveryTick status={m.status_entrega} />}
+          </div>
+        )}
       </div>
     </div>
   );
