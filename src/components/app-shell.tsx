@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import {
-  LayoutDashboard, Bot, KanbanSquare, LogOut, Smartphone, Shield,
+  LayoutDashboard, Bot, KanbanSquare, Table2, LogOut, Smartphone, Shield,
   Inbox, Users, BarChart3, Settings, Contact, Zap, MessageCircle, Megaphone, Webhook, Wallet,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +29,7 @@ const sections: { label: string; items: NavItem[] }[] = [
       { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/app/conversas", label: "Conversas", icon: Inbox, badge: true },
       { to: "/app/crm", label: "CRM Kanban", icon: KanbanSquare },
+      { to: "/app/planilha", label: "Planilha de Leads", icon: Table2 },
       { to: "/app/campanhas", label: "Campanhas", icon: Megaphone, adminOnly: true },
       { to: "/app/agente", label: "Agente IA", icon: Bot, tag: "IA", adminOnly: true },
     ],

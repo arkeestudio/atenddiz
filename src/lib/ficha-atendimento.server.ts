@@ -67,7 +67,10 @@ export async function atualizarFichaComIa(opts: {
     })
     .join("\n");
 
-  const camposTxt = campos
+  // Campos combinados por uma pessoa (valor negociado, data de pagamento) não vão para a IA:
+  // ela não tem como saber e inventaria número em nome da escola.
+  const camposIa = campos.filter((c) => !c.somenteEquipe);
+  const camposTxt = camposIa
     .map((c) => `- "${c.id}": ${c.label}${c.dica ? ` (${c.dica})` : ""} — valor atual: ${JSON.stringify(atual[c.id] ?? "")}`)
     .join("\n");
 
@@ -105,7 +108,7 @@ ${conversa}`;
 
   const ficha: Record<string, string> = { ...atual };
   const mudancas: string[] = [];
-  for (const c of campos) {
+  for (const c of camposIa) {
     const novo = String(parsed?.campos?.[c.id] ?? "").trim();
     if (novo && novo !== (atual[c.id] ?? "")) {
       ficha[c.id] = novo;

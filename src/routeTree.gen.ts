@@ -42,6 +42,7 @@ import { Route as DemoCampanhasRouteImport } from './routes/demo/campanhas'
 import { Route as DemoAgenteRouteImport } from './routes/demo/agente'
 import { Route as CsatTokenRouteImport } from './routes/csat.$token'
 import { Route as AppRelatoriosRouteImport } from './routes/app/relatorios'
+import { Route as AppPlanilhaRouteImport } from './routes/app/planilha'
 import { Route as AppOnboardingRouteImport } from './routes/app/onboarding'
 import { Route as AppIntegracoesRouteImport } from './routes/app/integracoes'
 import { Route as AppFinanceiroRouteImport } from './routes/app/financeiro'
@@ -227,6 +228,11 @@ const AppRelatoriosRoute = AppRelatoriosRouteImport.update({
   path: '/relatorios',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPlanilhaRoute = AppPlanilhaRouteImport.update({
+  id: '/planilha',
+  path: '/planilha',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppOnboardingRoute = AppOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -350,6 +356,7 @@ export interface FileRoutesByFullPath {
   '/app/financeiro': typeof AppFinanceiroRoute
   '/app/integracoes': typeof AppIntegracoesRoute
   '/app/onboarding': typeof AppOnboardingRoute
+  '/app/planilha': typeof AppPlanilhaRoute
   '/app/relatorios': typeof AppRelatoriosRoute
   '/csat/$token': typeof CsatTokenRoute
   '/demo/agente': typeof DemoAgenteRoute
@@ -402,6 +409,7 @@ export interface FileRoutesByTo {
   '/app/financeiro': typeof AppFinanceiroRoute
   '/app/integracoes': typeof AppIntegracoesRoute
   '/app/onboarding': typeof AppOnboardingRoute
+  '/app/planilha': typeof AppPlanilhaRoute
   '/app/relatorios': typeof AppRelatoriosRoute
   '/csat/$token': typeof CsatTokenRoute
   '/demo/agente': typeof DemoAgenteRoute
@@ -457,6 +465,7 @@ export interface FileRoutesById {
   '/app/financeiro': typeof AppFinanceiroRoute
   '/app/integracoes': typeof AppIntegracoesRoute
   '/app/onboarding': typeof AppOnboardingRoute
+  '/app/planilha': typeof AppPlanilhaRoute
   '/app/relatorios': typeof AppRelatoriosRoute
   '/csat/$token': typeof CsatTokenRoute
   '/demo/agente': typeof DemoAgenteRoute
@@ -513,6 +522,7 @@ export interface FileRouteTypes {
     | '/app/financeiro'
     | '/app/integracoes'
     | '/app/onboarding'
+    | '/app/planilha'
     | '/app/relatorios'
     | '/csat/$token'
     | '/demo/agente'
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/app/financeiro'
     | '/app/integracoes'
     | '/app/onboarding'
+    | '/app/planilha'
     | '/app/relatorios'
     | '/csat/$token'
     | '/demo/agente'
@@ -619,6 +630,7 @@ export interface FileRouteTypes {
     | '/app/financeiro'
     | '/app/integracoes'
     | '/app/onboarding'
+    | '/app/planilha'
     | '/app/relatorios'
     | '/csat/$token'
     | '/demo/agente'
@@ -902,6 +914,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRelatoriosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/planilha': {
+      id: '/app/planilha'
+      path: '/planilha'
+      fullPath: '/app/planilha'
+      preLoaderRoute: typeof AppPlanilhaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/onboarding': {
       id: '/app/onboarding'
       path: '/onboarding'
@@ -1064,6 +1083,7 @@ interface AppRouteChildren {
   AppFinanceiroRoute: typeof AppFinanceiroRoute
   AppIntegracoesRoute: typeof AppIntegracoesRoute
   AppOnboardingRoute: typeof AppOnboardingRoute
+  AppPlanilhaRoute: typeof AppPlanilhaRoute
   AppRelatoriosRoute: typeof AppRelatoriosRoute
 }
 
@@ -1081,6 +1101,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppFinanceiroRoute: AppFinanceiroRoute,
   AppIntegracoesRoute: AppIntegracoesRoute,
   AppOnboardingRoute: AppOnboardingRoute,
+  AppPlanilhaRoute: AppPlanilhaRoute,
   AppRelatoriosRoute: AppRelatoriosRoute,
 }
 

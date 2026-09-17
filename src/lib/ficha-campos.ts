@@ -5,16 +5,24 @@ export type FichaCampo = {
   id: string; // chave estável: o valor fica salvo em crm_cards.ficha[id]
   label: string;
   dica?: string; // orienta a IA sobre o que colocar
+  // Campo que só a equipe preenche. Valor negociado e data de pagamento são combinados
+  // por uma pessoa: se a IA puder escrever aqui, ela inventa número — e número errado
+  // sobre dinheiro, dito em nome da escola, é o pior tipo de erro.
+  somenteEquipe?: boolean;
 };
 
 export const FICHA_CAMPOS_PADRAO: FichaCampo[] = [
   { id: "responsavel", label: "Nome do responsável", dica: "Mãe, pai ou quem está conversando" },
   { id: "crianca", label: "Nome da criança" },
-  { id: "idade", label: "Idade / data de nascimento", dica: "Ex: 8 meses, nasceu em 03/2026" },
+  { id: "nascimento", label: "Data de nascimento", dica: "Só se a família disser. Ex: 03/2026" },
+  { id: "idade", label: "Idade", dica: "Ex: 8 meses, 3 anos" },
   { id: "turma", label: "Turma de interesse", dica: "Berçário I, Berçário II ou Maternal" },
   { id: "turno", label: "Turno", dica: "Integral ou meio período (manhã/tarde)" },
-  { id: "inicio", label: "Quando pretende começar" },
-  { id: "visita", label: "Visita", dica: "Se quer visitar, data e horário combinados" },
+  { id: "atipico", label: "Criança atípica", dica: "Só se a família mencionar. Anote o que ela contou" },
+  { id: "visita", label: "Data da visita", dica: "Data e horário combinados, se houver" },
+  { id: "inicio", label: "Início da adaptação", dica: "Quando pretende começar" },
+  { id: "valor_combinado", label: "Valor combinado", somenteEquipe: true },
+  { id: "data_pagamento", label: "Data de pagamento", somenteEquipe: true },
   { id: "como_conheceu", label: "Como conheceu" },
   { id: "duvidas", label: "Dúvidas e preocupações" },
 ];
@@ -29,7 +37,8 @@ export function normalizeFichaCampos(raw: unknown): FichaCampo[] {
     if (!label || !id || seen.has(id)) continue;
     seen.add(id);
     const dica = String((item as any)?.dica ?? "").trim();
-    campos.push({ id, label, ...(dica ? { dica } : {}) });
+    const somenteEquipe = (item as any)?.somenteEquipe === true;
+    campos.push({ id, label, ...(dica ? { dica } : {}), ...(somenteEquipe ? { somenteEquipe } : {}) });
   }
   return campos;
 }

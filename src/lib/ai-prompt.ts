@@ -247,7 +247,10 @@ export function buildSystemPrompt(
 
   // Ficha = memória do contato guardada no sistema. Vale mais que reenviar a conversa inteira.
   const fichaValores = opts?.ficha?.campos || {};
+  // Campos só da equipe (valor negociado, data de pagamento) ficam fora do prompt:
+  // a IA não precisa deles para atender e não pode sair citando preço combinado.
   const fichaLinhas = fichaCampos
+    .filter((f) => !f.somenteEquipe)
     .map((f) => (fichaValores[f.id]?.trim() ? `• ${f.label}: ${fichaValores[f.id].trim()}` : ""))
     .filter(Boolean);
   const fichaBloco =
