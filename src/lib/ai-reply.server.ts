@@ -32,6 +32,7 @@ export async function runAiReply(opts: {
   const { getWhatsAppProvider } = await import("@/lib/whatsapp-provider");
   const { lovableAiChat } = await import("@/lib/lovable-ai.server");
   const { buildSystemPrompt, parseAiOutput } = await import("@/lib/ai-prompt");
+  const { textoSemMarcadorMidia } = await import("@/lib/midia-conversa.shared");
   const provider = getWhatsAppProvider();
 
   let cfg = opts.cfg;
@@ -107,7 +108,8 @@ export async function runAiReply(opts: {
     { role: "system", content: system },
     ...historico.map((m) => ({
       role: (m.direcao === "entrada" ? "user" : "assistant") as "user" | "assistant",
-      content: m.texto,
+      // O caminho do arquivo no bucket não diz nada para a IA e só gasta token.
+      content: textoSemMarcadorMidia(m.texto),
     })),
   ];
   if (!messages.length || messages[messages.length - 1].role !== "user") {

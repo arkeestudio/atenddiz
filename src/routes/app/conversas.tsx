@@ -19,6 +19,8 @@ import { sendWhatsappText, sendWhatsappMedia, sendInternalNote, setContactIaActi
 import { AUDIO_ENVIADO, TRANSCREVENDO, audioPendingText } from "@/lib/audio-labels";
 import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner } from "@/lib/chat-copilot.functions";
 import { marcarAtendido } from "@/lib/ficha.functions";
+import { assinarMidiasConversa } from "@/lib/midia.functions";
+import { extrairCaminhoMidia, textoSemMarcadorMidia } from "@/lib/midia-conversa.shared";
 import { FichaAtendimento } from "@/components/ficha/ficha-atendimento";
 import { markConversationSeen, sendTypingPresence } from "@/lib/whatsapp.functions";
 import { LeadDrawer, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
@@ -592,6 +594,22 @@ function ConversasPage() {
     [...msgs].filter((m) => m.numero === active).sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at)),
     [msgs, active]);
 
+  // Imagens ficam num bucket privado: o texto guarda só o caminho e aqui pedimos
+  // uma URL temporária para exibir. Pede em lote, e só o que ainda não temos.
+  const [midiaUrls, setMidiaUrls] = useState<Record<string, string>>({});
+  const assinarMidias = useServerFn(assinarMidiasConversa);
+  useEffect(() => {
+    const pendentes = Array.from(
+      new Set(thread.map((m) => extrairCaminhoMidia(m.texto)).filter((c): c is string => !!c)),
+    ).filter((c) => !midiaUrls[c]);
+    if (!pendentes.length) return;
+    let cancelado = false;
+    assinarMidias({ data: { caminhos: pendentes } })
+      .then((r: any) => { if (!cancelado && r?.urls) setMidiaUrls((prev) => ({ ...prev, ...r.urls })); })
+      .catch(() => {});
+    return () => { cancelado = true; };
+  }, [thread, midiaUrls, assinarMidias]);
+
   const activeConv = conversations.find((c) => c.numero === active) ?? (active ? { numero: active, nome: cards[active]?.nome ?? null, last: thread[thread.length - 1] } : null);
   const activeCard = active ? cards[active] : undefined;
   const activeStage = activeCard?.stage_id ? stages.find((s) => s.id === activeCard.stage_id) : null;
@@ -1004,6 +1022,7 @@ function ConversasPage() {
                         m={m}
                         primeira={primeira}
                         ultima={ultima}
+                        midiaUrl={midiaUrls[extrairCaminhoMidia(m.texto) ?? ""]}
                         onTranscribe={handleTranscribeAudio}
                         onPreviewImage={setImagePreviewUrl}
                       />
@@ -1588,19 +1607,23 @@ function Bubble({
   m,
   primeira = true,
   ultima = true,
+  midiaUrl,
   onTranscribe,
   onPreviewImage,
 }: {
   m: Msg;
   primeira?: boolean;
   ultima?: boolean;
+  midiaUrl?: string;
   onTranscribe?: (msgId: string, currentText: string) => void;
   onPreviewImage?: (url: string) => void;
 }) {
   const isInternal = m.texto.startsWith(NOTA_INTERNA);
   const isOut = m.direcao === "saida";
   const ia = m.autor === "ia";
-  const displayText = isInternal ? m.texto.replace(NOTA_INTERNA, "").trim() : m.texto;
+  // O caminho da imagem não é para o olho humano: mostra o texto sem o marcador.
+  const semMarcador = textoSemMarcadorMidia(m.texto);
+  const displayText = isInternal ? semMarcador.replace(NOTA_INTERNA, "").trim() : semMarcador;
   const isAudio = m.texto.includes("[Áudio]") || m.texto.includes("[Audio]") || m.texto.startsWith("🎤");
   // Transcrição em andamento esconde o botão; se ficou presa (>2 min), o botão volta para tentar de novo.
   const transcrevendo = m.texto.includes(TRANSCREVENDO) && Date.now() - new Date(m.created_at).getTime() < 120_000;
@@ -1610,7 +1633,9 @@ function Bubble({
   // Detecta URLs de imagem no texto
   const imgMatch = m.texto.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)/i) ||
     m.texto.match(/\[Foto do Produto:\s*(https?:\/\/[^\]]+)\]/i);
-  const imageUrl = imgMatch ? (imgMatch[1] || imgMatch[0]) : null;
+  // midiaUrl é a URL assinada da imagem guardada no bucket privado; tem prioridade.
+  const imageUrl = midiaUrl || (imgMatch ? (imgMatch[1] || imgMatch[0]) : null);
+  const aguardandoMidia = !midiaUrl && !!extrairCaminhoMidia(m.texto);
 
   if (isInternal) {
     return (
@@ -1664,6 +1689,11 @@ function Bubble({
               onClick={() => onPreviewImage?.(imageUrl)}
               className="w-full max-h-48 object-cover rounded-lg cursor-pointer hover:opacity-95 transition"
             />
+          </div>
+        )}
+        {aguardandoMidia && (
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-current/25 px-3 py-4 text-[11.5px] opacity-70 max-w-sm">
+            <ImageIcon className="size-3.5 shrink-0" /> carregando imagem…
           </div>
         )}
 

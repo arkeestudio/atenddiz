@@ -148,6 +148,16 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               if (duplicate) return new Response("duplicate", { status: 200 });
             }
 
+            // Imagem enviada pelo celular: guarda o arquivo e deixa só o marcador no texto.
+            let textoSaida = text || (audioMsg ? audioPendingText(AUDIO_ENVIADO) : imageMsg ? "📷 Imagem" : "");
+            if (imageMsg && bodyEhBase64) {
+              const { salvarImagemConversa, marcadorMidia } = await import("@/lib/midia-conversa.server");
+              const caminho = await salvarImagemConversa({
+                companyId, base64: corpoBruto, mimetype: data?.mimetype ?? null, numero: number,
+              });
+              if (caminho) textoSaida = `${textoSaida} ${marcadorMidia(caminho)}`;
+            }
+
             const { data: fromMeRow } = await (supabaseAdmin as any)
               .from("mensagens")
               .insert({
@@ -157,13 +167,13 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
                 contato_nome: pushName ?? null,
                 direcao: "saida",
                 autor: "humano",
-                texto: text || (audioMsg ? audioPendingText(AUDIO_ENVIADO) : imageMsg ? "📎 [Imagem]" : ""),
+                texto: textoSaida,
                 whatsapp_message_id: whatsappMessageId,
               })
               .select("id")
               .maybeSingle();
 
-            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text || (audioMsg ? AUDIO_ENVIADO : "📎 [Imagem]"), stages);
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text || (audioMsg ? AUDIO_ENVIADO : "📷 Imagem"), stages);
 
             // Nota de voz enviada pelo celular também é transcrita na hora.
             if (audioMsg && fromMeRow?.id) {
@@ -192,27 +202,42 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           let isReceipt = false;
           let receiptAnalysis: any = null;
 
-          // Imagem recebida -> audita com Gemini Vision se for comprovante bancário
+          // Imagem recebida -> guarda no bucket privado e audita com Gemini Vision se for comprovante
           if (imageMsg) {
             try {
               const provider = getWhatsAppProvider();
+              let base64: string | null = null;
+              let mimetype: string | null = data?.mimetype ?? null;
               if (provider.getMediaBase64) {
                 const media = await provider.getMediaBase64(companyId, instanceName, { key, message: msg, ...data });
                 if (media?.base64) {
-                  const { geminiAnalyzeReceipt } = await import("@/lib/lovable-ai.server");
-                  receiptAnalysis = await geminiAnalyzeReceipt(media.base64, media.mimetype);
-                  if (receiptAnalysis?.e_comprovante) {
-                    isReceipt = true;
-                    const valFmt = receiptAnalysis.valor ? `R$ ${Number(receiptAnalysis.valor).toFixed(2)}` : "";
-                    text = `[Comprovante de Pagamento Recebido: ${valFmt} - ${receiptAnalysis.resumo || "Validado via IA"}]`;
-                  } else if (!text || !text.trim()) {
-                    text = "[Imagem enviada pelo cliente]";
-                  }
+                  base64 = media.base64;
+                  mimetype = media.mimetype ?? mimetype;
                 }
+              }
+              // O OpenWA já manda a imagem no próprio `body`; serve de reserva.
+              if (!base64 && bodyEhBase64) base64 = corpoBruto;
+
+              if (base64) {
+                const { salvarImagemConversa, marcadorMidia } = await import("@/lib/midia-conversa.server");
+                const caminho = await salvarImagemConversa({ companyId, base64, mimetype, numero: number });
+
+                const { geminiAnalyzeReceipt } = await import("@/lib/lovable-ai.server");
+                receiptAnalysis = await geminiAnalyzeReceipt(base64, mimetype ?? undefined);
+                if (receiptAnalysis?.e_comprovante) {
+                  isReceipt = true;
+                  const valFmt = receiptAnalysis.valor ? `R$ ${Number(receiptAnalysis.valor).toFixed(2)}` : "";
+                  text = `[Comprovante de Pagamento Recebido: ${valFmt} - ${receiptAnalysis.resumo || "Validado via IA"}]`;
+                } else if (!text || !text.trim()) {
+                  text = "📷 Imagem";
+                }
+                if (caminho) text = `${text} ${marcadorMidia(caminho)}`;
+              } else if (!text || !text.trim()) {
+                text = "📷 Imagem";
               }
             } catch (e: any) {
               console.error("[image/receipt audit]", e?.message);
-              if (!text || !text.trim()) text = "[Imagem enviada pelo cliente]";
+              if (!text || !text.trim()) text = "📷 Imagem";
             }
             if (!text || !text.trim()) return new Response("no image text", { status: 200 });
           }
