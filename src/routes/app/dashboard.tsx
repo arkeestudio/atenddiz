@@ -190,12 +190,12 @@ function Dashboard() {
         <div className="flex items-center gap-2 mb-1">
           <AlertTriangle className={`size-4 ${totalPendencias ? "text-amber-500" : "text-muted-foreground"}`} />
           <h3 className="font-display text-[17px] font-semibold">Precisa de ação agora</h3>
-          <span className="text-[11.5px] text-muted-foreground">independe do período</span>
+          <span className="text-[11.5px] text-muted-foreground whitespace-nowrap">independe do período</span>
         </div>
         {totalPendencias === 0 ? (
           <p className="text-[13px] text-muted-foreground py-6 text-center">Nenhuma pendência. Tudo respondido. 🎉</p>
         ) : (
-          <div className="grid md:grid-cols-3 gap-4 mt-3">
+          <div className="grid md:grid-cols-3 gap-4 mt-3 min-w-0">
             <ListaPendencia
               titulo="Aguardando humano"
               icone={<Hand className="size-3.5" />}
@@ -269,10 +269,10 @@ function Dashboard() {
       {periodo.receitaPerdida > 0 && (
         <Link
           to="/app/relatorios"
-          className="flex items-center gap-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-5 py-3 hover:bg-red-500/10 transition"
+          className="flex items-center gap-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-5 py-3 hover:bg-red-500/10 transition min-w-0"
         >
           <TrendingDown className="size-4 text-red-500 shrink-0" />
-          <span className="text-[13px]">
+          <span className="text-[13px] min-w-0">
             <strong className="text-red-500">R$ {periodo.receitaPerdida.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</strong> em receita potencial perdida
             {periodo.motivoTop && <> — a razão mais frequente é <strong>{periodo.motivoTop}</strong></>}
           </span>
@@ -280,10 +280,12 @@ function Dashboard() {
         </Link>
       )}
 
-      <div className="grid lg:grid-cols-[1fr_1fr] gap-5">
-        <div className="rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-6">
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
+        {/* min-w-0: item de grid nasce com min-width:auto, entao uma mensagem longa
+            estica a coluna e empurra o resto da pagina para fora da tela. */}
+        <div className="min-w-0 overflow-hidden rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-6">
           <div className="flex items-center justify-between mb-3">
-            <div>
+            <div className="min-w-0">
               <h3 className="font-display text-[17px] font-semibold">Últimas mensagens</h3>
               <p className="text-xs text-muted-foreground">atividade recente</p>
             </div>
@@ -292,13 +294,13 @@ function Dashboard() {
           <MessageTimeline items={timeline} empty="Conecte o WhatsApp para começar a ver conversas." />
         </div>
 
-        <div className="rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-6 flex flex-col">
+        <div className="min-w-0 rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-6 flex flex-col">
           <div className="flex items-center gap-2 mb-1">
             <Bot className="size-4 text-[color:var(--brand)]" />
             <h3 className="font-display text-[17px] font-semibold">Uso da IA</h3>
           </div>
           <p className="text-xs text-muted-foreground mb-4">no período selecionado</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 min-w-0">
             <IaStat label="Modelo" value={iaModelo} />
             <IaStat label="Respostas da IA" value={String(respondidasIa)} />
             <IaStat label="Resolvido no automático" value={`${taxaIa}%`} />
@@ -320,7 +322,7 @@ function ListaPendencia({ titulo, icone, cor, itens, sufixo, vazio, para }: {
   itens: Pendencia[]; sufixo: (p: Pendencia) => string; vazio: string; para: string;
 }) {
   return (
-    <div className="rounded-xl border border-[color:var(--hairline)] bg-[color:var(--panel-2)] p-3">
+    <div className="min-w-0 rounded-xl border border-[color:var(--hairline)] bg-[color:var(--panel-2)] p-3">
       <div className={`flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold ${cor}`}>
         {icone} {titulo}
         <span className="ml-auto text-[15px] font-bold tabular-nums">{itens.length}</span>
@@ -334,7 +336,7 @@ function ListaPendencia({ titulo, icone, cor, itens, sufixo, vazio, para }: {
             search={para === "/app/conversas" ? ({ numero: p.numero } as any) : undefined}
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[color:var(--panel)] text-[12.5px]"
           >
-            <span className="truncate flex-1">{p.nome || p.numero}</span>
+            <span className="truncate flex-1 min-w-0">{p.nome || p.numero}</span>
             <span className="text-muted-foreground text-[11px] whitespace-nowrap">{sufixo(p)}</span>
           </Link>
         ))}
@@ -368,9 +370,9 @@ function prettyModel(m?: string | null): string {
 
 function IaStat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="text-[15px] font-bold mt-0.5">{value}</div>
+    <div className="min-w-0">
+      <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground truncate" title={label}>{label}</div>
+      <div className="text-[15px] font-bold mt-0.5 truncate" title={value}>{value}</div>
     </div>
   );
 }
