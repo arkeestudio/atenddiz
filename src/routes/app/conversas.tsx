@@ -384,6 +384,7 @@ function ConversasPage() {
           numero: active,
           nome: activeConv?.nome || active,
           stage_id: stageId,
+          origem: "WhatsApp",
           ultima_em: new Date().toISOString(),
         }).select().maybeSingle();
         if (newCard) {

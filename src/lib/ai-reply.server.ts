@@ -324,7 +324,7 @@ export async function upsertCard(
 ) {
   const { data: existing } = await admin
     .from("crm_cards")
-    .select("id, status, nome, stage_id, valor, observacao")
+    .select("id, status, nome, stage_id, valor, observacao, origem, utm_source")
     .eq("company_id", companyId)
     .eq("numero", numero)
     .maybeSingle();
@@ -358,6 +358,12 @@ export async function upsertCard(
     ultima_em: new Date().toISOString(),
   };
   if (nomeWhatsapp) payload.nome_whatsapp = nomeWhatsapp;
+
+  // Origem só no nascimento do lead: depois disso é a equipe que manda. Sem isso não dá
+  // para responder qual campanha virou matricula -- e o campo existia sem ninguem preencher.
+  if (!existing?.origem) {
+    payload.origem = (existing as any)?.utm_source?.trim() || "WhatsApp";
+  }
   if (finalStage) {
     payload.stage_id = finalStage.id;
     payload.status = finalStage.nome;

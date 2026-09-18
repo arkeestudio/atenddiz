@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HelpTip } from "@/components/help-tip";
 import { useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import {
   DndContext, DragOverlay, PointerSensor, useDroppable, useDraggable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -15,8 +16,10 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { toast } from "sonner";
 import { Plus, MoreVertical, Sparkles, Pencil, Trash2, Palette, Send, Zap, Loader2, Search, Layers, X } from "lucide-react";
 import { brand } from "@/config/brand";
-import { LeadDrawer, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
+import { LeadDrawer, type LeadCard, type Stage, type StageTipo, type Member } from "@/components/crm/lead-drawer";
+import { MOTIVOS_PERDA, labelMotivoPerda } from "@/lib/motivos-perda";
 import { runBatchSalesRecovery } from "@/lib/sales-recovery.functions";
+import { emitirDesfechoLead } from "@/lib/crm.functions";
 
 export const Route = createFileRoute("/app/crm")({
   head: () => ({ meta: [{ title: `${brand.name} — CRM Kanban` }] }),
@@ -38,7 +41,11 @@ function KanbanPage() {
   const [editingStage, setEditingStage] = useState<Stage | null>(null);
   const [adding, setAdding] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [perdaAlvo, setPerdaAlvo] = useState<{ cardId: string; stageId: string } | null>(null);
+  const [funilOpen, setFunilOpen] = useState(false);
+  const [montandoFunil, setMontandoFunil] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const emitirDesfecho = useServerFn(emitirDesfechoLead);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -115,21 +122,87 @@ function KanbanPage() {
     [cards]
   );
 
-  async function moveCard(id: string, stageId: string) {
+  async function moveCard(id: string, stageId: string, perda?: { motivo: string; detalhe: string }) {
     const stage = stages.find((s) => s.id === stageId);
     if (!stage) return;
+
+    // Perder um lead sem dizer por quê joga fora o dado mais caro do funil. Em vez de
+    // gravar e perguntar depois (ninguém volta), o card só se move com o motivo em mãos.
+    if (stage.tipo === "perda" && !perda) {
+      setPerdaAlvo({ cardId: id, stageId });
+      return;
+    }
+
     const prev = cards;
-    setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage_id: stageId, status: stage.nome } : c)));
-    const { error } = await supabase.from("crm_cards").update({ stage_id: stageId, status: stage.nome }).eq("id", id);
+    const patch: Record<string, any> = { stage_id: stageId, status: stage.nome };
+    if (perda) {
+      patch.motivo_perda = perda.motivo;
+      patch.motivo_perda_detalhe = perda.detalhe || null;
+      patch.perdido_em = new Date().toISOString();
+    }
+    setCards((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    // `as any`: os tipos gerados do Supabase ainda não têm as colunas de motivo de perda.
+    const { error } = await supabase.from("crm_cards").update(patch as any).eq("id", id);
     if (error) { setCards(prev); return toast.error(error.message); }
+
     await supabase.from("lead_evento").insert({
-      company_id: companyId, card_id: id, tipo: "mudanca_etapa", descricao: `Movido para ${stage.nome}`,
+      company_id: companyId,
+      card_id: id,
+      tipo: perda ? "perda" : stage.tipo === "ganho" ? "ganho" : "mudanca_etapa",
+      descricao: perda
+        ? `Perdido: ${labelMotivoPerda(perda.motivo)}${perda.detalhe ? ` — ${perda.detalhe}` : ""}`
+        : `Movido para ${stage.nome}`,
     });
+
+    // Avisa integrações externas. Falhar aqui não pode desfazer a movimentação do card.
+    if (stage.tipo === "ganho" || stage.tipo === "perda") {
+      const card = cards.find((c) => c.id === id);
+      if (card) {
+        void emitirDesfecho({
+          data: { numero: card.numero, tipo: stage.tipo, motivo: perda?.motivo ?? null, detalhe: perda?.detalhe ?? null },
+        }).catch(() => {});
+      }
+    }
   }
 
-  async function createStage(nome: string, cor: string) {
+  // Monta o funil comercial de 11 etapas. Não dá para simplesmente inserir: existe índice
+  // único por nome e as etapas atuais já têm cards pendurados. Então renomeia as que
+  // correspondem e insere só o que falta — nenhum lead muda de lugar.
+  async function montarFunilComercial() {
+    setMontandoFunil(true);
+    try {
+      const porNome = new Map(stages.map((s) => [s.nome.trim().toLowerCase(), s]));
+      for (let i = 0; i < FUNIL_COMERCIAL.length; i++) {
+        const alvo = FUNIL_COMERCIAL[i];
+        const atual =
+          porNome.get(alvo.nome.toLowerCase()) ??
+          (alvo.renomeiaDe ? porNome.get(alvo.renomeiaDe.toLowerCase()) : undefined);
+        if (atual) {
+          const { error } = await supabase
+            .from("crm_stage")
+            .update({ nome: alvo.nome, ordem: i, tipo: alvo.tipo, cor: alvo.cor })
+            .eq("id", atual.id);
+          if (error) throw new Error(error.message);
+        } else {
+          const { error } = await supabase
+            .from("crm_stage")
+            .insert({ company_id: companyId, nome: alvo.nome, ordem: i, tipo: alvo.tipo, cor: alvo.cor });
+          if (error) throw new Error(error.message);
+        }
+      }
+      toast.success("Funil comercial montado");
+      setFunilOpen(false);
+      await loadAll(companyId);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Não deu para montar o funil.");
+    } finally {
+      setMontandoFunil(false);
+    }
+  }
+
+  async function createStage(nome: string, cor: string, tipo: StageTipo) {
     const ordem = stages.length;
-    const { error } = await supabase.from("crm_stage").insert({ company_id: companyId, nome, cor, ordem, tipo: "normal" });
+    const { error } = await supabase.from("crm_stage").insert({ company_id: companyId, nome, cor, ordem, tipo });
     if (error) toast.error(error.message); else toast.success("Etapa criada");
   }
   async function updateStage(id: string, patch: Partial<Stage>) {
@@ -194,6 +267,10 @@ function KanbanPage() {
           >
             <Sparkles className="size-4 mr-1.5" />
             Recuperar Vendas (IA)
+          </Button>
+          <Button variant="outline" onClick={() => setFunilOpen(true)}>
+            <Layers className="size-4 mr-1.5" />
+            Montar funil comercial
           </Button>
           <Button variant="outline" onClick={() => setNewStageOpen(true)}>
             <Plus className="size-4 mr-1.5" />
@@ -271,11 +348,28 @@ function KanbanPage() {
         <DragOverlay>{activeCard ? <CardBody card={activeCard} dragging /> : null}</DragOverlay>
       </DndContext>
 
-      <StageDialog open={newStageOpen} onClose={() => setNewStageOpen(false)}
-        onSave={(n, c) => { createStage(n, c); setNewStageOpen(false); }} />
-      <StageDialog open={!!editingStage} onClose={() => setEditingStage(null)}
+      <StageDialog open={newStageOpen} onClose={() => setNewStageOpen(false)} stages={stages}
+        onSave={(n, c, t) => { createStage(n, c, t); setNewStageOpen(false); }} />
+      <StageDialog open={!!editingStage} onClose={() => setEditingStage(null)} stages={stages}
         initial={editingStage ?? undefined}
-        onSave={(n, c) => { if (editingStage) updateStage(editingStage.id, { nome: n, cor: c }); setEditingStage(null); }} />
+        onSave={(n, c, t) => { if (editingStage) updateStage(editingStage.id, { nome: n, cor: c, tipo: t }); setEditingStage(null); }} />
+
+      <FunilDialog
+        open={funilOpen}
+        onClose={() => setFunilOpen(false)}
+        stages={stages}
+        salvando={montandoFunil}
+        onConfirm={() => void montarFunilComercial()}
+      />
+
+      <PerdaDialog
+        card={perdaAlvo ? cards.find((c) => c.id === perdaAlvo.cardId) ?? null : null}
+        onClose={() => setPerdaAlvo(null)}
+        onConfirm={(motivo, detalhe) => {
+          if (perdaAlvo) void moveCard(perdaAlvo.cardId, perdaAlvo.stageId, { motivo, detalhe });
+          setPerdaAlvo(null);
+        }}
+      />
 
       <LeadDrawer card={selected} stages={stages} members={members} companyId={companyId}
         onClose={() => setSelected(null)} onChanged={() => loadAll(companyId)} />
@@ -399,17 +493,128 @@ function CardBody({ card, dragging }: { card: LeadCard; dragging?: boolean }) {
   );
 }
 
-function StageDialog({ open, onClose, onSave, initial }:
-  { open: boolean; onClose: () => void; onSave: (nome: string, cor: string) => void; initial?: Stage }) {
+// Funil comercial do projeto da direção (item 2). `renomeiaDe` aproveita a etapa
+// equivalente que já existe, em vez de criar uma nova e deixar os cards para trás.
+const FUNIL_COMERCIAL: { nome: string; tipo: StageTipo; cor: string; renomeiaDe?: string }[] = [
+  { nome: "Lead novo", tipo: "normal", cor: "#8AA89A", renomeiaDe: "Conversas" },
+  { nome: "Primeiro contato", tipo: "normal", cor: "#60A5FA" },
+  { nome: "Contato realizado", tipo: "normal", cor: "#60A5FA" },
+  { nome: "Qualificado", tipo: "normal", cor: "#A78BFA" },
+  { nome: "Visita agendada", tipo: "normal", cor: "#A78BFA" },
+  { nome: "Visita realizada", tipo: "normal", cor: "#F472B6" },
+  { nome: "Proposta apresentada", tipo: "normal", cor: "#FFB020" },
+  { nome: "Negociação", tipo: "normal", cor: "#FFB020", renomeiaDe: "Negociando" },
+  { nome: "Matrícula", tipo: "ganho", cor: "#22B85F", renomeiaDe: "Ganho" },
+  { nome: "Perdido", tipo: "perda", cor: "#FF5A5A", renomeiaDe: "Perda" },
+  { nome: "Nutrição futura", tipo: "normal", cor: "#3FD27C" },
+];
+
+function FunilDialog({ open, onClose, stages, salvando, onConfirm }:
+  { open: boolean; onClose: () => void; stages: Stage[]; salvando: boolean; onConfirm: () => void }) {
+  const porNome = new Map(stages.map((s) => [s.nome.trim().toLowerCase(), s]));
+  const plano = FUNIL_COMERCIAL.map((alvo) => {
+    const existente = porNome.get(alvo.nome.toLowerCase());
+    const aRenomear = alvo.renomeiaDe ? porNome.get(alvo.renomeiaDe.toLowerCase()) : undefined;
+    return {
+      ...alvo,
+      acao: existente ? "mantem" : aRenomear ? "renomeia" : "cria",
+      de: aRenomear?.nome,
+    };
+  });
+  const orfas = stages.filter(
+    (s) => !FUNIL_COMERCIAL.some((f) => f.nome.toLowerCase() === s.nome.trim().toLowerCase() || f.renomeiaDe?.toLowerCase() === s.nome.trim().toLowerCase()),
+  );
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Montar funil comercial</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <p className="text-[12.5px] text-muted-foreground">
+            As etapas que já existem são <strong>renomeadas</strong>, não recriadas — nenhum lead sai do lugar.
+          </p>
+          <div className="max-h-[300px] overflow-auto space-y-1">
+            {plano.map((p, i) => (
+              <div key={p.nome} className="flex items-center gap-2 text-[12.5px] px-2 py-1.5 rounded-lg border border-[color:var(--hairline)]">
+                <span className="text-muted-foreground w-5 tabular-nums">{i + 1}</span>
+                <span className="size-2 rounded-full shrink-0" style={{ background: p.cor }} />
+                <span className="font-medium">{p.nome}</span>
+                {p.tipo !== "normal" && (
+                  <span className={`text-[10px] uppercase tracking-wider font-bold ${p.tipo === "ganho" ? "text-emerald-600" : "text-red-500"}`}>
+                    {p.tipo}
+                  </span>
+                )}
+                <span className="ml-auto text-[11px] text-muted-foreground">
+                  {p.acao === "renomeia" ? `renomeia "${p.de}"` : p.acao === "mantem" ? "já existe" : "cria"}
+                </span>
+              </div>
+            ))}
+          </div>
+          {orfas.length > 0 && (
+            <p className="text-[11.5px] text-amber-600 dark:text-amber-400">
+              Estas etapas atuais não fazem parte do funil e ficam como estão, no fim: {orfas.map((o) => o.nome).join(", ")}.
+              Os cards delas continuam onde estão.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button disabled={salvando} onClick={onConfirm}>
+            {salvando && <Loader2 className="size-4 mr-1.5 animate-spin" />}
+            Montar funil
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const TIPOS_ETAPA: { v: StageTipo; l: string; d: string }[] = [
+  { v: "normal", l: "Etapa do meio", d: "O lead está andando no funil. A IA pode mover livremente." },
+  { v: "ganho", l: "Fechamento (ganho)", d: "Conta como venda nos relatórios e lança a receita no Financeiro automaticamente." },
+  { v: "perda", l: "Perda", d: "Ao mover um lead para cá, o sistema exige o motivo da perda." },
+];
+
+function StageDialog({ open, onClose, onSave, initial, stages }:
+  { open: boolean; onClose: () => void; onSave: (nome: string, cor: string, tipo: StageTipo) => void; initial?: Stage; stages: Stage[] }) {
   const [nome, setNome] = useState(initial?.nome ?? "");
   const [cor, setCor] = useState(initial?.cor ?? STAGE_COLORS[0]);
-  useEffect(() => { if (open) { setNome(initial?.nome ?? ""); setCor(initial?.cor ?? STAGE_COLORS[0]); } }, [open, initial?.id]);
+  const [tipo, setTipo] = useState<StageTipo>(initial?.tipo ?? "normal");
+  useEffect(() => {
+    if (open) { setNome(initial?.nome ?? ""); setCor(initial?.cor ?? STAGE_COLORS[0]); setTipo(initial?.tipo ?? "normal"); }
+  }, [open, initial?.id]);
+
+  // Duas etapas de ganho fariam a mesma venda ser contada duas vezes no relatório.
+  const jaExiste = tipo !== "normal" && stages.some((s) => s.tipo === tipo && s.id !== initial?.id);
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader><DialogTitle>{initial ? "Editar etapa" : "Nova etapa"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Nome</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus /></div>
+          <div className="space-y-1.5">
+            <Label>O que esta etapa significa</Label>
+            <div className="space-y-1.5">
+              {TIPOS_ETAPA.map((t) => (
+                <button
+                  key={t.v}
+                  type="button"
+                  onClick={() => setTipo(t.v)}
+                  className={`w-full text-left rounded-xl border px-3 py-2 transition ${
+                    tipo === t.v ? "border-[color:var(--brand)] bg-[color:var(--brand-soft)]" : "border-[color:var(--hairline)] hover:bg-[color:var(--panel-2)]"
+                  }`}
+                >
+                  <span className="block text-[13px] font-semibold">{t.l}</span>
+                  <span className="block text-[11.5px] text-muted-foreground">{t.d}</span>
+                </button>
+              ))}
+            </div>
+            {jaExiste && (
+              <p className="text-[11.5px] text-amber-600 dark:text-amber-400">
+                Já existe uma etapa deste tipo. Ter duas faria a mesma venda contar duas vezes no relatório.
+              </p>
+            )}
+          </div>
           <div>
             <Label className="flex items-center gap-1.5"><Palette className="size-3.5" />Cor</Label>
             <div className="flex flex-wrap gap-2 mt-2">
@@ -423,7 +628,53 @@ function StageDialog({ open, onClose, onSave, initial }:
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => nome.trim() && onSave(nome.trim(), cor)}>Salvar</Button>
+          <Button disabled={jaExiste} onClick={() => nome.trim() && onSave(nome.trim(), cor, tipo)}>Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PerdaDialog({ card, onClose, onConfirm }:
+  { card: LeadCard | null; onClose: () => void; onConfirm: (motivo: string, detalhe: string) => void }) {
+  const [motivo, setMotivo] = useState("");
+  const [detalhe, setDetalhe] = useState("");
+  useEffect(() => { if (card) { setMotivo(""); setDetalhe(""); } }, [card?.id]);
+  if (!card) return null;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Por que perdemos {card.nome || card.numero}?</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <p className="text-[12.5px] text-muted-foreground">
+            Depois de alguns meses, é esta resposta que mostra se estamos perdendo por preço, por horário ou por falta de vaga.
+            {Number(card.valor) > 0 && (
+              <> Receita potencial perdida: <strong>R$ {Number(card.valor).toLocaleString("pt-BR")}</strong>.</>
+            )}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 max-h-[280px] overflow-auto">
+            {MOTIVOS_PERDA.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMotivo(m.id)}
+                className={`text-left rounded-xl border px-2.5 py-2 transition ${
+                  motivo === m.id ? "border-[color:var(--brand)] bg-[color:var(--brand-soft)]" : "border-[color:var(--hairline)] hover:bg-[color:var(--panel-2)]"
+                }`}
+              >
+                <span className="block text-[12.5px] font-semibold">{m.label}</span>
+                {m.dica && <span className="block text-[10.5px] text-muted-foreground leading-tight">{m.dica}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[12px]">Detalhe (opcional)</Label>
+            <Input value={detalhe} onChange={(e) => setDetalhe(e.target.value)} placeholder="Ex: foi para a escola da esquina, R$ 200 mais barato" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!motivo} onClick={() => onConfirm(motivo, detalhe.trim())}>Registrar perda</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -456,7 +707,7 @@ function AddFromWhatsappDialog({ open, onClose, companyId, userId, firstStageId,
   async function add(c: any) {
     const { error } = await supabase.from("crm_cards").upsert({
       company_id: companyId, user_id: userId, numero: c.numero, nome: c.contato_nome,
-      status: firstStageNome, stage_id: firstStageId,
+      status: firstStageNome, stage_id: firstStageId, origem: "WhatsApp",
       ultima_mensagem: c.texto.slice(0, 240), ultima_em: new Date().toISOString(),
     }, { onConflict: "company_id,numero" });
     if (error) return toast.error(error.message);

@@ -6,6 +6,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { brand } from "@/config/brand";
+import { labelMotivoPerda } from "@/lib/motivos-perda";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Bot, MessageCircle, Target, DollarSign, Download, Clock, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,7 +48,9 @@ function RelatoriosPage() {
     void (async () => {
       const [{ data: m }, { data: c }, { data: st }, { data: cu }, { data: cs }] = await Promise.all([
         supabase.from("mensagens").select("created_at,direcao,autor,user_id").eq("company_id", companyId).gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString()),
-        supabase.from("crm_cards").select("status,stage_id,valor,owner_id,ultima_em").eq("company_id", companyId),
+        // Filtrado pela data de entrada do lead: sem isso, "Conversão" e "Receita" ficavam
+        // sempre acumuladas desde sempre, mesmo com o período em "Hoje".
+        supabase.from("crm_cards").select("status,stage_id,valor,owner_id,ultima_em,created_at,motivo_perda").eq("company_id", companyId).gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString()),
         supabase.from("crm_stage").select("id,nome,cor,tipo,ordem").eq("company_id", companyId).order("ordem", { ascending: true }),
         supabase.from("company_user").select("user_id,profiles(nome,email)").eq("company_id", companyId).eq("ativo", true),
         supabase.from("csat_response").select("score,respondido_em").eq("company_id", companyId).gte("enviado_em", range.start.toISOString()).lte("enviado_em", range.end.toISOString()),
@@ -102,6 +105,27 @@ function RelatoriosPage() {
     });
     return Array.from(map.entries()).map(([d, v]) => ({ dia: d.slice(5), mensagens: v }));
   }, [msgs, range.start.getTime(), range.end.getTime()]);
+
+  // Por que perdemos. É a leitura que o projeto comercial chama de mais valiosa:
+  // saber se a matrícula escapou por preço, por horário ou por falta de vaga muda
+  // decisões diferentes da direção. "Motivo não informado" fica visível de propósito,
+  // porque é fila de trabalho — normalmente são as perdas que a IA fechou sozinha.
+  const perdas = useMemo(() => {
+    const perdidos = cards.filter((c: any) => {
+      const st = stages.find((s) => s.id === c.stage_id);
+      return (st as any)?.tipo === "perda";
+    });
+    const porMotivo = new Map<string, { qtd: number; valor: number }>();
+    for (const c of perdidos as any[]) {
+      const k = c.motivo_perda || "_sem";
+      const cur = porMotivo.get(k) ?? { qtd: 0, valor: 0 };
+      porMotivo.set(k, { qtd: cur.qtd + 1, valor: cur.valor + (Number(c.valor) || 0) });
+    }
+    const linhas = [...porMotivo.entries()]
+      .map(([id, v]) => ({ id, label: id === "_sem" ? "Motivo não informado" : labelMotivoPerda(id), ...v }))
+      .sort((a, b) => b.qtd - a.qtd);
+    return { linhas, total: perdidos.length, receitaPerdida: linhas.reduce((s, l) => s + l.valor, 0) };
+  }, [cards, stages]);
 
   const byStage = useMemo(() => {
     return stages.map((s) => {
@@ -227,6 +251,44 @@ function RelatoriosPage() {
           </ul>
         </div>
       </div>
+
+      {perdas.total > 0 && (
+        <div className="rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-6">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <div>
+              <h3 className="font-display text-[17px] font-semibold">Por que perdemos</h3>
+              <p className="text-xs text-muted-foreground">{perdas.total} {perdas.total === 1 ? "lead perdido" : "leads perdidos"} no período</p>
+            </div>
+            {perdas.receitaPerdida > 0 && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Receita potencial perdida</p>
+                <p className="font-display text-[19px] font-semibold text-red-500">
+                  R$ {perdas.receitaPerdida.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+            )}
+          </div>
+          <ul className="space-y-1.5">
+            {perdas.linhas.map((l) => (
+              <li key={l.id} className="flex items-center gap-3 text-[13px]">
+                <span className={`min-w-[170px] ${l.id === "_sem" ? "text-amber-600 dark:text-amber-400" : ""}`}>{l.label}</span>
+                <span className="flex-1 h-2 rounded-full bg-[color:var(--panel-2)] overflow-hidden">
+                  <span
+                    className={`block h-full rounded-full ${l.id === "_sem" ? "bg-amber-500/60" : "bg-red-500/70"}`}
+                    style={{ width: `${Math.round((l.qtd / perdas.total) * 100)}%` }}
+                  />
+                </span>
+                <span className="font-semibold tabular-nums w-8 text-right">{l.qtd}</span>
+                {l.valor > 0 && (
+                  <span className="text-muted-foreground tabular-nums w-24 text-right">
+                    R$ {l.valor.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-6">
         <div className="flex items-center justify-between mb-3">

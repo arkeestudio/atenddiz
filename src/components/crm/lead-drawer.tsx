@@ -13,6 +13,11 @@ import { useServerFn } from "@tanstack/react-start";
 import { Loader2, Save, Trash2, Send, Sparkles, Hand } from "lucide-react";
 import { generateLeadFollowup, sendLeadFollowup } from "@/lib/sales-recovery.functions";
 import { FichaAtendimento, type FichaCard } from "@/components/ficha/ficha-atendimento";
+import { labelMotivoPerda } from "@/lib/motivos-perda";
+
+// Origens do item 3 do projeto comercial. Lista curta de propósito: texto livre não agrega
+// em relatório — "insta", "Instagram" e "IG" viram três linhas diferentes.
+export const ORIGENS = ["Instagram", "Google", "Indicação", "Site", "WhatsApp", "Ligação", "Evento", "Tráfego pago", "Importação"];
 
 export interface LeadCard extends FichaCard {
   id: string; numero: string; nome: string | null;
@@ -22,8 +27,10 @@ export interface LeadCard extends FichaCard {
   observacao: string | null; valor: number | null;
   origem: string | null; owner_id: string | null;
   tags: string[]; proxima_acao: string | null; follow_up: string | null;
+  motivo_perda?: string | null; motivo_perda_detalhe?: string | null; perdido_em?: string | null;
 }
-export interface Stage { id: string; nome: string; cor: string; }
+export type StageTipo = "normal" | "ganho" | "perda";
+export interface Stage { id: string; nome: string; cor: string; tipo?: StageTipo; }
 export interface Member { user_id: string; email?: string | null; nome?: string | null; }
 
 export function LeadDrawer({
@@ -97,8 +104,36 @@ export function LeadDrawer({
             <Field label="Nome" value={local.nome ?? ""} onChange={(v) => set("nome", v)} />
             <div className="grid grid-cols-2 gap-3">
               <Field label="Valor (R$)" type="number" value={String(local.valor ?? 0)} onChange={(v) => set("valor", Number(v) || 0)} />
-              <Field label="Origem" value={local.origem ?? ""} onChange={(v) => set("origem", v)} />
+              <div className="space-y-1.5">
+                <Label>Origem</Label>
+                <Select
+                  value={ORIGENS.includes(local.origem ?? "") ? (local.origem as string) : local.origem ? "_outro" : "_none"}
+                  onValueChange={(v) => set("origem", v === "_none" ? null : v === "_outro" ? (local.origem ?? "") : v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="Sem origem" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Sem origem</SelectItem>
+                    {ORIGENS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                    <SelectItem value="_outro">Outro…</SelectItem>
+                  </SelectContent>
+                </Select>
+                {local.origem !== null && !ORIGENS.includes(local.origem ?? "") && (
+                  <Input
+                    value={local.origem ?? ""}
+                    onChange={(e) => set("origem", e.target.value)}
+                    placeholder="Qual origem?"
+                    className="h-8 text-[13px]"
+                  />
+                )}
+              </div>
             </div>
+
+            {local.motivo_perda && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12.5px]">
+                <span className="font-semibold text-red-700 dark:text-red-300">Perdido: {labelMotivoPerda(local.motivo_perda)}</span>
+                {local.motivo_perda_detalhe && <p className="mt-0.5 opacity-90">{local.motivo_perda_detalhe}</p>}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Etapa</Label>
               <Select value={local.stage_id ?? ""} onValueChange={(v) => set("stage_id", v)}>

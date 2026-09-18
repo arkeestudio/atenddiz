@@ -60,6 +60,7 @@ export const createContact = createServerFn({ method: "POST" })
         nome: data.nome,
         status: firstStage?.nome ?? "Conversas",
         stage_id: firstStage?.id ?? null,
+        origem: "Manual",
         ultima_em: new Date().toISOString(),
       },
       { onConflict: "company_id,numero" },
@@ -119,6 +120,7 @@ export const importContacts = createServerFn({ method: "POST" })
       nome: c.nome,
       status: firstStage?.nome ?? "Conversas",
       stage_id: firstStage?.id ?? null,
+      origem: "Importação",
       ultima_em: new Date().toISOString(),
     }));
     if (payload.length === 0) return { ok: true, inseridos: 0 };
