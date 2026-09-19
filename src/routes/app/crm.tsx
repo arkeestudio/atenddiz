@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { toast } from "sonner";
-import { Plus, MoreVertical, Sparkles, Pencil, Trash2, Palette, Send, Zap, Loader2, Search, Layers, X } from "lucide-react";
+import { Plus, MoreVertical, Sparkles, Pencil, Trash2, Palette, Send, Zap, Loader2, Search, Layers, X, AlertCircle, CalendarClock } from "lucide-react";
 import { brand } from "@/config/brand";
 import { LeadDrawer, type LeadCard, type Stage, type StageTipo, type Member } from "@/components/crm/lead-drawer";
 import { MOTIVOS_PERDA, labelMotivoPerda } from "@/lib/motivos-perda";
@@ -446,6 +446,43 @@ function KCard({ card, onClick }: { card: LeadCard; onClick: () => void }) {
   );
 }
 
+function ProximoPasso({ card }: { card: LeadCard }) {
+  const temAcao = !!card.proxima_acao?.trim();
+  const quando = card.follow_up ? new Date(card.follow_up) : null;
+  const atrasado = !!quando && +quando < Date.now();
+  const hoje = !!quando && quando.toDateString() === new Date().toDateString();
+
+  if (!temAcao && !quando) {
+    return (
+      <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2 py-1.5 rounded-lg">
+        <AlertCircle className="size-3 shrink-0" />
+        <span>Sem próximo passo definido</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`mt-2.5 px-2 py-1.5 rounded-lg border text-[11.5px] ${
+      atrasado
+        ? "bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-400"
+        : "bg-[var(--panel)]/60 border-[var(--border)]/60"
+    }`}>
+      {temAcao && <div className="truncate font-medium" title={card.proxima_acao ?? ""}>{card.proxima_acao}</div>}
+      {quando && (
+        <div className="flex items-center gap-1 mt-0.5 opacity-90">
+          <CalendarClock className="size-3 shrink-0" />
+          <span>
+            {atrasado
+              ? `atrasado desde ${quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
+              : hoje
+                ? `hoje ${quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                : quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardBody({ card, dragging }: { card: LeadCard; dragging?: boolean }) {
   const time = new Date(card.ultima_em);
   return (
@@ -466,6 +503,11 @@ function CardBody({ card, dragging }: { card: LeadCard; dragging?: boolean }) {
           {card.ultima_mensagem}
         </p>
       )}
+      {/* Proximo passo. O campo existia desde sempre, era gravado e NUNCA exibido em lugar
+          nenhum -- por isso "nenhum lead sem proximo passo" era impossivel de cobrar.
+          Quando falta, o cartao pede, em vez de deixar o vazio passar despercebido. */}
+      <ProximoPasso card={card} />
+
       {card.tags?.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2.5">
           {card.tags.map((t) => (

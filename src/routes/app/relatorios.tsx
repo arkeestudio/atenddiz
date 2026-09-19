@@ -7,6 +7,15 @@ import {
 } from "recharts";
 import { brand } from "@/config/brand";
 import { labelMotivoPerda } from "@/lib/motivos-perda";
+
+function formatDuracao(ms: number): string {
+  const seg = Math.round(ms / 1000);
+  if (seg < 60) return `${seg}s`;
+  const min = Math.round(seg / 60);
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h}h${min % 60 ? ` ${min % 60}min` : ""}` : `${Math.floor(h / 24)}d`;
+}
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Bot, MessageCircle, Target, DollarSign, Download, Clock, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,7 +56,7 @@ function RelatoriosPage() {
     if (!companyId) return;
     void (async () => {
       const [{ data: m }, { data: c }, { data: st }, { data: cu }, { data: cs }] = await Promise.all([
-        supabase.from("mensagens").select("created_at,direcao,autor,user_id").eq("company_id", companyId).gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString()),
+        supabase.from("mensagens").select("created_at,direcao,autor,user_id,numero").eq("company_id", companyId).gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString()),
         // Filtrado pela data de entrada do lead: sem isso, "Conversão" e "Receita" ficavam
         // sempre acumuladas desde sempre, mesmo com o período em "Hoje".
         supabase.from("crm_cards").select("status,stage_id,valor,owner_id,ultima_em,created_at,motivo_perda").eq("company_id", companyId).gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString()),
@@ -65,22 +74,39 @@ function RelatoriosPage() {
     })();
   }, [companyId, range.start.getTime(), range.end.getTime()]);
 
-  // Tempo médio de resposta: para cada mensagem 'entrada', achar a próxima 'saida' do mesmo dia
-  const tempoMedioMs = useMemo(() => {
-    const sorted = [...msgs].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
-    const deltas: number[] = [];
-    for (let i = 0; i < sorted.length; i++) {
-      if (sorted[i].direcao !== "entrada") continue;
-      for (let j = i + 1; j < sorted.length; j++) {
-        if (sorted[j].direcao === "saida") {
-          deltas.push(+new Date(sorted[j].created_at) - +new Date(sorted[i].created_at));
-          break;
-        }
-      }
+  // Tempo de resposta, medido POR CONTATO e separando IA de humano.
+  //
+  // O cálculo antigo varria a lista global: a resposta mandada para o cliente B "fechava"
+  // a pergunta do cliente A, e a IA (que responde em segundos) puxava a média para baixo
+  // escondendo quanto a equipe realmente demora. O número não servia para decisão.
+  //
+  // Só conta a PRIMEIRA resposta a uma pergunta: respostas em rajada não contam de novo.
+  const tempos = useMemo(() => {
+    const porContato = new Map<string, any[]>();
+    for (const m of msgs as any[]) {
+      if (!m.numero) continue;
+      (porContato.get(m.numero) ?? porContato.set(m.numero, []).get(m.numero)!).push(m);
     }
-    if (!deltas.length) return 0;
-    return deltas.reduce((a, b) => a + b, 0) / deltas.length;
+    const dIa: number[] = [], dHumano: number[] = [];
+    porContato.forEach((lista) => {
+      lista.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+      let aguardando: number | null = null;
+      for (const m of lista) {
+        if (m.direcao === "entrada") {
+          if (aguardando === null) aguardando = +new Date(m.created_at);
+          continue;
+        }
+        if (aguardando === null) continue;
+        const delta = +new Date(m.created_at) - aguardando;
+        (m.autor === "ia" ? dIa : dHumano).push(delta);
+        aguardando = null;
+      }
+    });
+    const media = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+    return { ia: media(dIa), humano: media(dHumano), nIa: dIa.length, nHumano: dHumano.length };
   }, [msgs]);
+
+  const tempoMedioMs = tempos.humano || tempos.ia;
 
   const stageMap = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
   const totalMsgs = msgs.length;
@@ -166,7 +192,8 @@ function RelatoriosPage() {
     lines.push(`Ganhos;${ganho.length}`);
     lines.push(`Receita (R$);${receita.toFixed(2)}`);
     lines.push(`Conversão (%);${conversao}`);
-    lines.push(`Tempo médio resposta (s);${Math.round(tempoMedioMs / 1000)}`);
+    lines.push(`Tempo 1a resposta equipe (s);${Math.round(tempos.humano / 1000)}`);
+    lines.push(`Tempo 1a resposta IA (s);${Math.round(tempos.ia / 1000)}`);
     lines.push(`CSAT médio (1-5);${csatMedia ? csatMedia.toFixed(2) : "-"}`);
     lines.push(`CSAT respostas;${csatRespondidos.length}/${csat.length}`);
     lines.push("");
@@ -209,7 +236,17 @@ function RelatoriosPage() {
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <KpiCard accent icon={<MessageCircle className="size-4" />} label="Mensagens" value={totalMsgs} trend={`${respIa} pela IA`} />
-        <KpiCard icon={<Clock className="size-4" />} label="Tempo médio resposta" value={tempoMedioMs ? `${Math.round(tempoMedioMs / 1000)}s` : "—"} trend="estimado entrada → saída" />
+        <KpiCard
+          icon={<Clock className="size-4" />}
+          label="Tempo de 1ª resposta"
+          value={tempos.humano ? formatDuracao(tempos.humano) : tempos.ia ? formatDuracao(tempos.ia) : "—"}
+          trend={
+            tempos.humano && tempos.ia
+              ? `equipe ${formatDuracao(tempos.humano)} · IA ${formatDuracao(tempos.ia)}`
+              : tempos.humano ? `${tempos.nHumano} respostas da equipe`
+              : tempos.ia ? `${tempos.nIa} respostas da IA` : "sem dados"
+          }
+        />
         <KpiCard icon={<Target className="size-4" />} label="Conversão" value={`${conversao}%`} trend={`${ganho.length} ganhos / ${cards.length} cards`} />
         <KpiCard icon={<DollarSign className="size-4" />} label="Receita" value={`R$ ${receita.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} trend="cards em etapas de ganho" />
         <KpiCard icon={<Star className="size-4" />} label="CSAT" value={csatMedia ? `${csatMedia.toFixed(1)} / 5` : "—"} trend={`${csatRespondidos.length}/${csat.length} resp. (${csatTaxa}%)`} />

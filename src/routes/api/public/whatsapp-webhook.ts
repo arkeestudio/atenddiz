@@ -119,6 +119,10 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             data?.content ||
             "";
           if (audioMsg) text = "";
+          // Rede de segurança: o OpenWA repete o arquivo em `body`, `content` e às vezes
+          // `text`. Tratar só o `body` deixava o base64 escapar pelo fallback e virar o
+          // texto da mensagem — com a imagem salva corretamente no bucket ao lado.
+          if (text && ehConteudoBase64(text)) text = "";
           if ((!text || !text.trim()) && !audioMsg && !imageMsg) return new Response("no text", { status: 200 });
 
           const { data: inst } = await (supabaseAdmin as any)
@@ -307,6 +311,35 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             .eq("company_id", companyId)
             .maybeSingle();
 
+          // Interruptor geral. A mensagem continua sendo gravada e aparecendo no painel:
+          // desligar a IA não pode significar perder o contato, só significa que ninguém
+          // responde automaticamente até uma pessoa assumir.
+          if ((cfg as any)?.ia_ativa === false) {
+            const { registrarTransferenciaHumano } = await import("@/lib/ficha-atendimento.server");
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            await registrarTransferenciaHumano({
+              admin: supabaseAdmin, companyId, userId, numero: number,
+              motivo: (cfg as any)?.ia_pausada_motivo || "IA desligada — atendimento manual",
+            }).catch(() => {});
+            return new Response("ia-desligada", { status: 200 });
+          }
+
+          // Mensagem que chegou enquanto o sistema estava fora do ar (reenviada pelo
+          // sync-chats na reconexão). Responder com atraso de horas é pior que não
+          // responder: entra na fila humana, que sabe o que fazer com o atraso.
+          const msgTimestamp = Number(data?.t ?? data?.timestamp ?? key?.t ?? 0);
+          const idadeMin = msgTimestamp > 0 ? (Date.now() - msgTimestamp * 1000) / 60000 : 0;
+          if (idadeMin > MAX_IDADE_RESPOSTA_MIN) {
+            const { registrarTransferenciaHumano } = await import("@/lib/ficha-atendimento.server");
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            await registrarTransferenciaHumano({
+              admin: supabaseAdmin, companyId, userId, numero: number,
+              motivo: `Chegou há ${Math.round(idadeMin / 60)}h, enquanto o sistema estava fora`,
+            }).catch(() => {});
+            console.warn("[whatsapp] mensagem antiga não respondida pela IA", number, Math.round(idadeMin), "min");
+            return new Response("mensagem-antiga", { status: 200 });
+          }
+
           const palavraPausar = (cfg?.palavra_pausar || "/pausar").toLowerCase().trim();
           const palavraDespausar = (cfg?.palavra_despausar || "/despausar").toLowerCase().trim();
           const lower = text.toLowerCase().trim();
@@ -489,6 +522,15 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
 
 // O OpenWA às vezes manda a string "null"/"undefined" no lugar do nome, e isso ia
 // parar no banco como se fosse o nome do contato.
+// Assinatura de arquivo em base64 (JPEG, PNG, GIF, WebP, OGG, MP3) ou bloco longo sem
+// espaço nenhum. Vale para qualquer campo, não só o `body`.
+function ehConteudoBase64(v: any): boolean {
+  const t = typeof v === "string" ? v.trim() : "";
+  if (!t) return false;
+  if (/^(data:[^;,]{0,60};base64,|\/9j\/|iVBORw0KGgo|R0lGOD|UklGR|T2dnUw|SUQz)/.test(t)) return true;
+  return t.length > 512 && !/\s/.test(t) && /^[A-Za-z0-9+/=]+$/.test(t);
+}
+
 function nomeContatoValido(n: any): string | undefined {
   const s = typeof n === "string" ? n.trim() : "";
   if (!s || s === "null" || s === "undefined") return undefined;
@@ -548,6 +590,11 @@ function extractPhoneNumber(data: any, key: any): string | null {
 
 // Tempo sem atividade humana após o qual uma conversa pausada volta para a IA.
 const HUMAN_IDLE_RESUME_MS = 30 * 60_000;
+
+// Acima disso a IA não responde sozinha. Serve para a reconexão: o sync-chats reenvia
+// o que chegou durante a queda, e responder "bom dia" seis horas depois soa pior do que
+// uma pessoa assumindo e explicando a demora.
+const MAX_IDADE_RESPOSTA_MIN = 30;
 
 const OPT_OUT_WORDS =["parar", "pare", "cancelar", "sair", "remover", "descadastrar", "stop", "unsubscribe"];
 

@@ -146,6 +146,25 @@ export async function openwaGetQr(sessionId: string): Promise<{ qrBase64: string
   }
 }
 
+/**
+ * Pede ao servidor que releia as conversas e reenvie as mensagens recentes pelo webhook.
+ * Serve para recuperar o que chegou enquanto a ponte estava fora do ar: o OpenWA só
+ * enxerga mensagem ao vivo, então tudo que entra durante um restart some para sempre.
+ * O webhook descarta duplicadas pelo whatsapp_message_id.
+ */
+export async function openwaSyncChats(sessionId: string): Promise<{ ok: boolean; synced?: number }> {
+  try {
+    const res = await openwaFetch<{ synced?: number }>(
+      `/sessions/${encodeURIComponent(sessionId)}/sync-chats`,
+      { method: "POST" },
+    );
+    return { ok: true, synced: res?.synced };
+  } catch (e) {
+    console.warn("[openwaSyncChats]", e);
+    return { ok: false };
+  }
+}
+
 export async function openwaSetWebhook(sessionId: string, webhookUrl: string) {
   try {
     return await openwaFetch(`/sessions/${encodeURIComponent(sessionId)}/webhooks`, {

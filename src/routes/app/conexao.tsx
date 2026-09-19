@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Power, QrCode, Flame } from "lucide-react";
+import { Loader2, RefreshCw, Power, QrCode, Flame, Bot } from "lucide-react";
 import { brand } from "@/config/brand";
-import { connectWhatsapp, checkWhatsappStatus, disconnectWhatsapp, getWhatsappSettings, setWhatsappWarmup } from "@/lib/evolution.functions";
+import { connectWhatsapp, checkWhatsappStatus, disconnectWhatsapp, getWhatsappSettings, setWhatsappWarmup, getIaAtiva, setIaAtiva } from "@/lib/evolution.functions";
 
 export const Route = createFileRoute("/app/conexao")({
   head: () => ({ meta: [{ title: `${brand.name} — Conexão` }] }),
@@ -24,6 +24,8 @@ function ConexaoPage() {
   const disconnect = useServerFn(disconnectWhatsapp);
   const getSettings = useServerFn(getWhatsappSettings);
   const saveWarmup = useServerFn(setWhatsappWarmup);
+  const lerIa = useServerFn(getIaAtiva);
+  const gravarIa = useServerFn(setIaAtiva);
 
   const [loading, setLoading] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
@@ -31,6 +33,8 @@ function ConexaoPage() {
   const [numero, setNumero] = useState<string | null>(null);
   const [warmup, setWarmup] = useState<{ ativo: boolean; limite: number }>({ ativo: false, limite: 50 });
   const [savingWarmup, setSavingWarmup] = useState(false);
+  const [ia, setIa] = useState<{ ativa: boolean; motivo: string | null }>({ ativa: true, motivo: null });
+  const [mudandoIa, setMudandoIa] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -38,8 +42,22 @@ function ConexaoPage() {
     void getSettings()
       .then((s: any) => setWarmup({ ativo: !!s.aquecimento_ativo, limite: s.aquecimento_limite_dia ?? 50 }))
       .catch(() => {});
+    void lerIa().then((r: any) => setIa({ ativa: !!r.ativa, motivo: r.motivo ?? null })).catch(() => {});
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  async function alternarIa(ativa: boolean) {
+    setMudandoIa(true);
+    try {
+      await gravarIa({ data: { ativa } });
+      setIa({ ativa, motivo: ativa ? null : "Desligada manualmente" });
+      toast.success(ativa ? "IA ligada — já responde as próximas mensagens." : "IA desligada. As mensagens continuam entrando no painel.");
+    } catch (e: any) {
+      toast.error(e?.message || "Não deu para mudar o estado da IA.");
+    } finally {
+      setMudandoIa(false);
+    }
+  }
 
   async function handleSaveWarmup() {
     setSavingWarmup(true);
@@ -72,6 +90,15 @@ function ConexaoPage() {
         if (!pollRef.current) startPolling();
       }
       if (r.status === "connected") { setQr(null); stopPolling(); if (!silent) toast.success("WhatsApp conectado!"); }
+      // O número conectado mudou: o servidor já desligou a IA por segurança. Avisa alto,
+      // porque é o momento em que um número errado começaria a atender clientes reais.
+      if (r.numeroTrocou) {
+        setIa({ ativa: false, motivo: `Número mudou para ${r.numero}. Confira antes de religar.` });
+        toast.warning("Número conectado mudou — a IA foi desligada por segurança.", {
+          description: "Confira se é o número certo e ligue o atendimento automático quando quiser.",
+          duration: 12000,
+        });
+      }
     } catch (e: any) { if (!silent) toast.error(e?.message || "Erro ao consultar status"); }
   }
 
@@ -121,6 +148,30 @@ function ConexaoPage() {
         </div>
       </div>
 
+
+      <Card className={`p-5 ${ia.ativa ? "" : "border-amber-500/40 bg-amber-500/5"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Bot className={`size-4 ${ia.ativa ? "text-[color:var(--brand)]" : "text-amber-600"}`} />
+              <h3 className="font-semibold text-[15px]">Atendimento automático</h3>
+              <HelpTip text="Desligue antes de conectar um número novo. Com a IA desligada as mensagens continuam chegando no painel e os contatos entram na fila Aguardando Humano — ninguém fica sem registro, só não recebe resposta automática." />
+            </div>
+            <p className="text-[12.5px] text-muted-foreground mt-0.5">
+              {ia.ativa
+                ? "A IA responde sozinha quem mandar mensagem."
+                : ia.motivo || "Desligada. As mensagens entram no painel, mas ninguém responde automaticamente."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0">
+            {mudandoIa && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+            <span className={`text-[12.5px] font-semibold ${ia.ativa ? "text-[color:var(--brand-text)]" : "text-amber-600"}`}>
+              {ia.ativa ? "Ligada" : "Desligada"}
+            </span>
+            <Switch checked={ia.ativa} disabled={mudandoIa} onCheckedChange={(v) => void alternarIa(v)} />
+          </div>
+        </div>
+      </Card>
 
       <Card className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

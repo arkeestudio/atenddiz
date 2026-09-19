@@ -278,12 +278,41 @@ export async function runAiReply(opts: {
   return "ok";
 }
 
+// Reduz a frase ao seu conteúdo: sem acento, emoji, pontuação nem caixa. Serve só para
+// comparar duas partes — "Fico aqui te aguardando 💙" e "Fico aqui te aguardando." viram
+// a mesma coisa.
+function essencia(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\p{Letter}\p{Number}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function sanitizeAiParts(parts: string[]) {
-  return parts
+  const limpas = parts
     .map((part) => part.replace(/\s+/g, " ").trim())
     .filter(Boolean)
-    .map((part) => (part.length > 700 ? `${part.slice(0, 697).trim()}...` : part))
-    .slice(0, 2);
+    .map((part) => (part.length > 700 ? `${part.slice(0, 697).trim()}...` : part));
+
+  // O modelo às vezes devolve duas partes dizendo a mesma coisa, e o cliente recebia as
+  // duas seguidas. Mantém a primeira e descarta a que repete (igual ou contida na outra).
+  const saida: string[] = [];
+  for (const parte of limpas) {
+    const e = essencia(parte);
+    if (!e) continue;
+    const iguais = saida.findIndex((j) => {
+      const a = essencia(j);
+      return a === e || (a.length > 12 && e.length > 12 && (a.includes(e) || e.includes(a)));
+    });
+    if (iguais === -1) { saida.push(parte); continue; }
+    // Quando uma repete a outra, fica com a mais completa: "Temos vaga sim, para o
+    // berçário e o maternal" vale mais que "Temos vaga sim".
+    if (essencia(parte).length > essencia(saida[iguais]).length) saida[iguais] = parte;
+  }
+  return saida.slice(0, 2);
 }
 
 async function getAiThrottleReason(admin: any, companyId: string, numero: string): Promise<string | null> {

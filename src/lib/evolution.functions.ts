@@ -79,6 +79,39 @@ export const connectWhatsapp = createServerFn({ method: "POST" })
     return { instanceName: conn.instanceName, qrBase64: conn.qrBase64, code: conn.code, state: conn.state, webhookUrl: conn.webhookUrl };
   });
 
+/** Estado do interruptor geral da IA. */
+export const getIaAtiva = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+    const { data } = await (supabase as any)
+      .from("agent_config")
+      .select("ia_ativa, ia_pausada_motivo")
+      .eq("company_id", companyId)
+      .maybeSingle();
+    // Sem a coluna (banco antigo) a IA segue ligada, que era o comportamento anterior.
+    return { ativa: data?.ia_ativa !== false, motivo: (data?.ia_pausada_motivo as string) || null };
+  });
+
+/**
+ * Liga/desliga a IA para a empresa inteira. Desligada, a mensagem continua entrando no
+ * painel e o contato vai para a fila humana — desligar não pode virar perder cliente.
+ */
+export const setIaAtiva = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { ativa: boolean }) => d)
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const companyId = await resolveCompanyId(supabase, userId);
+    const { error } = await (supabase as any)
+      .from("agent_config")
+      .update({ ia_ativa: data.ativa, ia_pausada_motivo: data.ativa ? null : "Desligada manualmente" })
+      .eq("company_id", companyId);
+    if (error) throw new Error(error.message);
+    return { ok: true, ativa: data.ativa };
+  });
+
 export const checkWhatsappStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -89,10 +122,10 @@ export const checkWhatsappStatus = createServerFn({ method: "POST" })
 
     const { data: row } = await (supabase as any)
       .from("whatsapp_instances")
-      .select("instance_name,status,numero,webhook_token,webhook_configured_at")
+      .select("instance_name,status,numero,webhook_token,webhook_configured_at,ultimo_numero,sincronizado_em")
       .eq("company_id", companyId)
       .maybeSingle();
-    if (!row) return { status: "disconnected", state: null, numero: null, qrBase64: null, code: null };
+    if (!row) return { status: "disconnected", state: null, numero: null, qrBase64: null, code: null, numeroTrocou: false };
 
     let statusRes;
     try {
@@ -105,20 +138,58 @@ export const checkWhatsappStatus = createServerFn({ method: "POST" })
         numero: row.numero ?? null,
         qrBase64: null,
         code: null,
+        numeroTrocou: false,
       };
     }
 
     const newStatus = statusRes.status;
     let numero: string | null = statusRes.numero || row.numero || null;
 
+    // Conectou um número DIFERENTE do que estava aqui antes. Foi exatamente assim que a IA
+    // atendeu clientes num número particular ligado por engano: ela começa a responder no
+    // instante em que a sessão sobe. Desliga sozinha e obriga alguém a conferir e religar.
+    const numeroTrocou = !!(numero && row.ultimo_numero && numero !== row.ultimo_numero);
+    if (numeroTrocou) {
+      await (supabase as any)
+        .from("agent_config")
+        .update({
+          ia_ativa: false,
+          ia_pausada_motivo: `Número conectado mudou de ${row.ultimo_numero} para ${numero}. Confira antes de religar.`,
+        })
+        .eq("company_id", companyId);
+      console.warn("[whatsapp] número trocou — IA desligada por segurança", companyId, row.ultimo_numero, "->", numero);
+    }
+
     if (newStatus !== row.status || (numero && numero !== row.numero)) {
-      await supabase
+      // `as any`: os tipos gerados do Supabase ainda não têm ultimo_numero/sincronizado_em.
+      await (supabase as any)
         .from("whatsapp_instances")
-        .update({ status: newStatus, ...(numero ? { numero } : {}) })
+        .update({ status: newStatus, ...(numero ? { numero, ultimo_numero: numero } : {}) })
         .eq("company_id", companyId);
     }
 
-    return { status: newStatus, state: statusRes.state, numero, qrBase64: statusRes.qrBase64 || null, code: statusRes.code || null };
+    // Acabou de (re)conectar: recupera o que chegou enquanto estava fora. Uma vez a cada
+    // 10 min no máximo, para o polling da tela não disparar sync a cada 3 segundos.
+    if (newStatus === "connected" && row.status !== "connected") {
+      const ultimaSync = row.sincronizado_em ? new Date(row.sincronizado_em).getTime() : 0;
+      if (Date.now() - ultimaSync > 10 * 60_000) {
+        void (async () => {
+          try {
+            const { openwaSyncChats } = await import("./whatsapp-provider/openwa.server");
+            await openwaSyncChats(row.instance_name);
+            await (supabase as any)
+              .from("whatsapp_instances")
+              .update({ sincronizado_em: new Date().toISOString() })
+              .eq("company_id", companyId);
+            console.log("[whatsapp] sync-chats disparado após reconexão", companyId);
+          } catch (e: any) {
+            console.warn("[whatsapp] sync-chats falhou", e?.message);
+          }
+        })();
+      }
+    }
+
+    return { status: newStatus, state: statusRes.state, numero, qrBase64: statusRes.qrBase64 || null, code: statusRes.code || null, numeroTrocou };
   });
 
 export const disconnectWhatsapp = createServerFn({ method: "POST" })

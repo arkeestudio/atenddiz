@@ -19,6 +19,22 @@ import { labelMotivoPerda } from "@/lib/motivos-perda";
 // em relatório — "insta", "Instagram" e "IG" viram três linhas diferentes.
 export const ORIGENS = ["Instagram", "Google", "Indicação", "Site", "WhatsApp", "Ligação", "Evento", "Tráfego pago", "Importação"];
 
+// Atalhos de follow-up: a cadência do projeto comercial (D1, D3, D7) em um clique.
+const ATALHOS_FOLLOWUP: { label: string; calcular: () => Date }[] = [
+  { label: "amanhã 9h", calcular: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; } },
+  { label: "em 3 dias", calcular: () => { const d = new Date(); d.setDate(d.getDate() + 3); d.setHours(9, 0, 0, 0); return d; } },
+  { label: "em 7 dias", calcular: () => { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(9, 0, 0, 0); return d; } },
+];
+
+// <input datetime-local> quer "YYYY-MM-DDTHH:mm" no fuso local, não ISO em UTC.
+function paraInputLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(+d)) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export interface LeadCard extends FichaCard {
   id: string; numero: string; nome: string | null;
   nome_whatsapp?: string | null; foto_url?: string | null;
@@ -161,8 +177,43 @@ export function LeadDrawer({
             </div>
             <Field label="Tags (separadas por vírgula)" value={(local.tags ?? []).join(", ")}
               onChange={(v) => set("tags", v.split(",").map(s => s.trim()).filter(Boolean))} />
-            <Field label="Próxima ação" value={local.proxima_acao ?? ""} onChange={(v) => set("proxima_acao", v)} />
-            <Field label="Follow-up (data/hora ISO)" value={local.follow_up ?? ""} onChange={(v) => set("follow_up", v || null as any)} />
+            {/* O que fazer e quando. Era o elo perdido de "nenhum lead sem próximo passo":
+                a ação nunca aparecia no painel e a data precisava ser digitada em ISO. */}
+            <Field
+              label="Próxima ação"
+              value={local.proxima_acao ?? ""}
+              onChange={(v) => set("proxima_acao", v)}
+              placeholder="Ex: ligar para confirmar a visita de quinta"
+            />
+            <div className="space-y-1.5">
+              <Label>Quando</Label>
+              <Input
+                type="datetime-local"
+                value={paraInputLocal(local.follow_up)}
+                onChange={(e) => set("follow_up", e.target.value ? new Date(e.target.value).toISOString() : (null as any))}
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {ATALHOS_FOLLOWUP.map((a) => (
+                  <button
+                    key={a.label}
+                    type="button"
+                    onClick={() => set("follow_up", a.calcular().toISOString() as any)}
+                    className="text-[11px] px-2 py-0.5 rounded-full border border-[color:var(--hairline)] hover:bg-[color:var(--panel-2)]"
+                  >
+                    {a.label}
+                  </button>
+                ))}
+                {local.follow_up && (
+                  <button
+                    type="button"
+                    onClick={() => set("follow_up", null as any)}
+                    className="text-[11px] px-2 py-0.5 rounded-full text-muted-foreground hover:underline"
+                  >
+                    limpar
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label>Observação</Label>
               <Textarea value={local.observacao ?? ""} onChange={(e) => set("observacao", e.target.value)} rows={3} />
@@ -191,11 +242,11 @@ export function LeadDrawer({
   );
 }
 
-function Field({ label, value, onChange, type }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+function Field({ label, value, onChange, type, placeholder }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }) {
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
-      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
