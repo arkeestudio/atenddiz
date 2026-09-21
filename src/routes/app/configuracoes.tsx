@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { HelpTip } from "@/components/help-tip";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Save, Sparkles, Download, Shield, Wallet, Lock } from "lucide-react";
+import { Loader2, Save, Sparkles, Download, Shield, Wallet, Lock, Upload, Trash2, AlertTriangle } from "lucide-react";
 import { brand } from "@/config/brand";
 import { TemplatesTab } from "@/components/config/templates-tab";
 import { HorariosTab } from "@/components/config/horarios-tab";
@@ -34,6 +34,37 @@ function ConfigPage() {
 
   const [empresa, setEmpresa] = useState({ nome: "", telefone: "" });
   const [identidade, setIdentidade] = useState({ primary_color: "#22C55E", logo_url: "" });
+  const [enviandoLogo, setEnviandoLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Link do Google Drive não é imagem: aquele endereço é uma PÁGINA que mostra a imagem.
+  // Colado aqui, o navegador recebe HTML onde esperava um JPEG e não aparece nada. É a
+  // saída natural de quem não tem onde hospedar — por isso o upload existe agora.
+  const linkQueNaoFunciona = /drive\.google\.com|docs\.google\.com|dropbox\.com\/s\/|onedrive\.live\.com|1drv\.ms/i.test(identidade.logo_url);
+
+  async function enviarLogo(file: File) {
+    if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem (PNG, JPG ou WebP)."); return; }
+    if (file.size > 4 * 1024 * 1024) { toast.error("Imagem muito grande (máx. 4MB)."); return; }
+    setEnviandoLogo(true);
+    try {
+      const ext = ((file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "")) || "png";
+      const caminho = `logo/${ctx.company?.id ?? "empresa"}-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from("campaign-media")
+        // upsert:false de proposito: a politica do bucket so permite INSERT, e upsert
+        // usaria PUT (update), que seria negado. O nome ja e unico pelo timestamp.
+        .upload(caminho, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+      if (error) throw error;
+      const { data } = supabase.storage.from("campaign-media").getPublicUrl(caminho);
+      setIdentidade((p) => ({ ...p, logo_url: data.publicUrl }));
+      toast.success("Logo enviado! Clique em Salvar para aplicar.");
+    } catch (e: any) {
+      toast.error(e?.message || "Não deu para enviar a imagem.");
+    } finally {
+      setEnviandoLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  }
   const [perfil, setPerfil] = useState({ nome: "", email: ctx.user.email ?? "" });
   const [senha, setSenha] = useState({ nova: "", confirma: "" });
   const [savingE, setSavingE] = useState(false);
@@ -148,10 +179,66 @@ function ConfigPage() {
                 <Input value={identidade.primary_color} onChange={(e) => setIdentidade({ ...identidade, primary_color: e.target.value })} />
               </div>
             </div>
-            <div>
-              <Label>URL do logo</Label>
-              <Input value={identidade.logo_url} onChange={(e) => setIdentidade({ ...identidade, logo_url: e.target.value })} placeholder="https://…" />
-              {identidade.logo_url && <img src={identidade.logo_url} alt="logo" className="mt-2 size-16 rounded object-cover border" />}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                Logo
+                <HelpTip text="Escolha um arquivo do seu computador. Link do Google Drive ou Dropbox não funciona: esses endereços são páginas, não o arquivo da imagem." />
+              </Label>
+              <div className="flex items-start gap-3">
+                <div className="size-20 rounded-xl border border-[color:var(--hairline)] bg-[color:var(--panel-2)] grid place-items-center overflow-hidden shrink-0">
+                  {identidade.logo_url ? (
+                    <img
+                      src={identidade.logo_url}
+                      alt="logo"
+                      className="size-full object-contain"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                  ) : (
+                    <span className="text-[10.5px] text-muted-foreground text-center px-1">sem logo</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void enviarLogo(f); }}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" disabled={enviandoLogo} onClick={() => logoInputRef.current?.click()}>
+                      {enviandoLogo ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Upload className="size-4 mr-1.5" />}
+                      {identidade.logo_url ? "Trocar imagem" : "Escolher imagem"}
+                    </Button>
+                    {identidade.logo_url && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setIdentidade({ ...identidade, logo_url: "" })}>
+                        <Trash2 className="size-4 mr-1.5" /> Remover
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11.5px] text-muted-foreground">PNG, JPG, WebP ou SVG · até 4MB</p>
+                </div>
+              </div>
+
+              <details className="text-[12px]">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">ou colar um endereço</summary>
+                <Input
+                  className="mt-2"
+                  value={identidade.logo_url}
+                  onChange={(e) => setIdentidade({ ...identidade, logo_url: e.target.value })}
+                  placeholder="https://…"
+                />
+              </details>
+
+              {linkQueNaoFunciona && (
+                <p className="flex items-start gap-1.5 text-[12px] text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    Esse link é de uma página do Drive/Dropbox, não do arquivo — a imagem não vai aparecer.
+                    Use o botão <strong>Escolher imagem</strong> acima.
+                  </span>
+                </p>
+              )}
             </div>
             <div className="flex justify-end">
               <Button onClick={saveIdentidade} disabled={savingI}>
