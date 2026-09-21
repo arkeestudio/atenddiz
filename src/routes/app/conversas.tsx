@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { brand } from "@/config/brand";
 import {
-  Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink,
+  Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink, RotateCcw,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
   Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList
 } from "lucide-react";
@@ -19,6 +19,7 @@ import { sendWhatsappText, sendWhatsappMedia, sendInternalNote, setContactIaActi
 import { AUDIO_ENVIADO, TRANSCREVENDO, audioPendingText } from "@/lib/audio-labels";
 import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner } from "@/lib/chat-copilot.functions";
 import { marcarAtendido } from "@/lib/ficha.functions";
+import { reiniciarConversa } from "@/lib/conversa.functions";
 import { assinarMidiasConversa } from "@/lib/midia.functions";
 import { extrairCaminhoMidia, textoSemMarcadorMidia } from "@/lib/midia-conversa.shared";
 import { FichaAtendimento } from "@/components/ficha/ficha-atendimento";
@@ -597,6 +598,9 @@ function ConversasPage() {
 
   // Imagens ficam num bucket privado: o texto guarda só o caminho e aqui pedimos
   // uma URL temporária para exibir. Pede em lote, e só o que ainda não temos.
+  const [reiniciarAlvo, setReiniciarAlvo] = useState<string | null>(null);
+  const [reiniciando, setReiniciando] = useState(false);
+  const reiniciarFn = useServerFn(reiniciarConversa);
   const [midiaUrls, setMidiaUrls] = useState<Record<string, string>>({});
   const assinarMidias = useServerFn(assinarMidiasConversa);
   useEffect(() => {
@@ -1004,6 +1008,15 @@ function ConversasPage() {
                   }}>
                     <Star className="size-3.5 mr-1" /> CSAT
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => active && setReiniciarAlvo(active)}
+                    title="Apaga esta conversa e a ficha para testar a IA como se fosse um contato novo"
+                    className="text-muted-foreground hover:text-red-600 hover:border-red-500/40"
+                  >
+                    <RotateCcw className="size-3.5 mr-1" /> Recomeçar
+                  </Button>
                 </div>
               </header>
 
@@ -1316,6 +1329,49 @@ function ConversasPage() {
       </div>
 
       {/* DIALOG DE RESUMO IA */}
+      <Dialog open={!!reiniciarAlvo} onOpenChange={(o) => !o && setReiniciarAlvo(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Recomeçar a conversa do zero?</DialogTitle></DialogHeader>
+          <div className="space-y-2.5 text-[13px]">
+            <p>
+              Apaga <strong>todo o histórico</strong> de{" "}
+              <strong>{cards[reiniciarAlvo ?? ""]?.nome || reiniciarAlvo}</strong>: mensagens, ficha do
+              atendimento, notas e o lead no CRM.
+            </p>
+            <p className="text-muted-foreground">
+              Serve para testar a IA: a próxima mensagem desse número entra como se fosse um contato
+              novo, sem que ela "lembre" das conversas anteriores.
+            </p>
+            <p className="text-red-600 dark:text-red-400 font-medium">Não dá para desfazer.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setReiniciarAlvo(null)} disabled={reiniciando}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={reiniciando}
+              onClick={async () => {
+                if (!reiniciarAlvo) return;
+                setReiniciando(true);
+                try {
+                  const r: any = await reiniciarFn({ data: { numero: reiniciarAlvo } });
+                  toast.success(`Conversa reiniciada — ${r.mensagens} mensagens apagadas.`);
+                  setReiniciarAlvo(null);
+                  setActive(null);
+                  if (companyId) await load(companyId);
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Não deu para reiniciar.");
+                } finally {
+                  setReiniciando(false);
+                }
+              }}
+            >
+              {reiniciando && <Loader2 className="size-4 mr-1.5 animate-spin" />}
+              Apagar e recomeçar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-md sm:max-w-lg">
           <DialogHeader>
