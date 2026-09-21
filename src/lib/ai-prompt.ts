@@ -117,13 +117,21 @@ function describeFormalidade(f?: number | null) {
   return "linguagem muito formal (cerimoniosa)";
 }
 
-function describeTamanho(t?: string | null) {
+// "Curtas" sem número vira sugestão e o modelo escreve parágrafo. O limite em palavras
+// é o que ele de fato respeita; vai no fim do prompt, junto do formato da resposta.
+function limiteTamanho(t?: string | null): { palavras: number; frases: string } | null {
   switch ((t || "curtas").toLowerCase()) {
-    case "longas": return "respostas mais longas e explicativas quando fizer sentido";
+    case "longas": return null;
     case "medias":
-    case "médias": return "respostas de tamanho médio";
-    default: return "respostas curtas, no estilo WhatsApp";
+    case "médias": return { palavras: 70, frases: "até 3 frases" };
+    default: return { palavras: 35, frases: "1 ou 2 frases" };
   }
+}
+
+function describeTamanho(t?: string | null) {
+  const lim = limiteTamanho(t);
+  if (!lim) return "respostas mais longas e explicativas quando fizer sentido";
+  return `respostas CURTAS: no máximo ${lim.palavras} palavras no total (${lim.frases})`;
 }
 
 function describePersonalidade(p?: string | null): string {
@@ -352,6 +360,15 @@ ESTILO DE MENSAGEM (WhatsApp humano):
 - Não repita o nome do cliente em toda mensagem. Não repita o que ele acabou de dizer.
 - Não soe como robô ("Como posso ajudá-lo hoje?"). Soe como um atendente real e atencioso.`,
   ];
+
+  const lim = limiteTamanho(c.tamanho_resposta);
+  if (lim) {
+    blocos.push(
+      `TAMANHO (OBRIGATÓRIO): a resposta inteira tem no MÁXIMO ${lim.palavras} palavras, somando todas as partes.
+Responda só o que o cliente perguntou agora. As informações da empresa acima são para você consultar, não para repetir: nunca cole trechos delas nem liste tudo o que está incluso.
+Se o assunto tiver mais detalhe, diga o essencial em uma frase e pergunte se ele quer saber mais.`,
+    );
+  }
 
   if (partes) {
     blocos.push(
