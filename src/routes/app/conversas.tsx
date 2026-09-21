@@ -47,6 +47,13 @@ interface Msg {
 
 type Filter = "todas" | "nao_lidas" | "aguardando_humano" | "minhas" | "ia_ativa" | "resolvidas";
 
+// Quem espera a equipe: transferido pelo servidor (IA desligada, pedido de atendente,
+// mensagem antiga, handoff da IA) ou com a IA pausada para o contato. "Última mensagem
+// é do contato" não conta: com a IA ativa ela só está no atraso antes de responder.
+function esperaHumano(transferido: boolean, resolvida: boolean, iaAtiva: boolean) {
+  return transferido || (!resolvida && !iaAtiva);
+}
+
 // Bolhas ainda não confirmadas pelo servidor.
 const OPTIMISTIC_PREFIX = "optimistic:";
 
@@ -532,17 +539,13 @@ function ConversasPage() {
   }, [search_.numero]);
 
   const countsAguardandoHumano = useMemo(() => {
-    const map = new Map<string, Msg>();
-    for (const m of msgs) {
-      if (!map.has(m.numero)) map.set(m.numero, m);
-    }
     let c = 0;
-    for (const [num, last] of map.entries()) {
+    for (const num of new Set(msgs.map((m) => m.numero))) {
       const card = cards[num];
       const tipo = card?.stage_id ? stages.find((s) => s.id === card.stage_id)?.tipo : null;
       const resolvida = tipo === "ganho" || tipo === "perda";
       const iaAtiva = !(pauses[num] ?? false);
-      if (card?.aguardando_humano || (!resolvida && (!iaAtiva || (last.direcao === "entrada" && last.autor === "contato")))) {
+      if (esperaHumano(!!card?.aguardando_humano, resolvida, iaAtiva)) {
         c++;
       }
     }
@@ -574,7 +577,7 @@ function ConversasPage() {
       const resolvida = tipo === "ganho" || tipo === "perda";
       switch (filter) {
         case "nao_lidas": return (unread[c.numero] ?? 0) > 0;
-        case "aguardando_humano": return !!card?.aguardando_humano || (!resolvida && (!iaAtiva || (c.last.direcao === "entrada" && c.last.autor === "contato")));
+        case "aguardando_humano": return esperaHumano(!!card?.aguardando_humano, resolvida, iaAtiva);
         case "minhas": return card?.owner_id === userId;
         case "ia_ativa": return iaAtiva && !resolvida;
         case "resolvidas": return resolvida;
@@ -840,7 +843,7 @@ function ConversasPage() {
               const tipo = card?.stage_id ? stages.find((s) => s.id === card.stage_id)?.tipo : null;
               const resolvida = tipo === "ganho" || tipo === "perda";
               const transferido = !!card?.aguardando_humano;
-              const aguardandoHumano = transferido || (!resolvida && (!iaAtiva || (c.last.direcao === "entrada" && c.last.autor === "contato")));
+              const aguardandoHumano = esperaHumano(transferido, resolvida, iaAtiva);
 
               return (
                 <li key={c.numero}>
