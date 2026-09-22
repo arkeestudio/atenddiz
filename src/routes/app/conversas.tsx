@@ -47,6 +47,13 @@ interface Msg {
 
 type Filter = "todas" | "nao_lidas" | "aguardando_humano" | "minhas" | "ia_ativa" | "resolvidas";
 
+// E-mail inteiro não cabe na pílula do cabeçalho e ainda entorta o campo. Sem nome
+// cadastrado, mostra só o que vem antes do @ — é o que a equipe reconhece.
+function nomeCurtoMembro(m?: Member | null): string {
+  if (!m) return "";
+  return m.nome?.trim() || (m.email ? m.email.split("@")[0] : "");
+}
+
 // Quem espera a equipe: transferido pelo servidor (IA desligada, pedido de atendente,
 // mensagem antiga, handoff da IA) ou com a IA pausada para o contato. "Última mensagem
 // é do contato" não conta: com a IA ativa ela só está no atraso antes de responder.
@@ -926,17 +933,17 @@ function ConversasPage() {
                         value={activeCard?.owner_id || "none"}
                         onValueChange={(val) => void handleAssignOwner(val === "none" ? null : val)}
                       >
-                        <SelectTrigger className="h-6 text-[11px] px-2 py-0 rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel-2)] max-w-[140px]">
-                          <span className="flex items-center gap-1 truncate text-xs">
+                        <SelectTrigger className="h-6 text-[11px] px-2 py-0 gap-1 rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel-2)] max-w-[150px] [&>svg]:shrink-0">
+                          <span className="flex items-center gap-1 min-w-0 text-xs">
                             <User className="size-3 text-muted-foreground shrink-0" />
-                            <SelectValue placeholder="Responsável" />
+                            <span className="truncate">{nomeCurtoMembro(members.find((m) => m.user_id === activeCard?.owner_id)) || "Responsável"}</span>
                           </span>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none" className="text-xs">Sem responsável</SelectItem>
                           {members.map((m) => (
                             <SelectItem key={m.user_id} value={m.user_id} className="text-xs">
-                              {m.nome || m.email}
+                              {nomeCurtoMembro(m)}
                             </SelectItem>
                           ))}
                         </SelectContent>
