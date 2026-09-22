@@ -228,7 +228,7 @@ function partesData(d: Date) {
  * repete a expressão do cliente e ninguém — nem a equipe — sabe que dia foi combinado.
  * Entregamos a conta já feita: a data de hoje e a dos próximos dias, no fuso de Brasília.
  */
-function blocoCalendario(): string {
+export function blocoCalendario(): string {
   const agora = new Date();
   const hoje = partesData(agora);
   const proximos = [1, 2, 3, 4, 5, 6, 7].map((n) => {

@@ -1,6 +1,7 @@
 // SERVER ONLY. Ficha do atendimento: a IA lê a conversa, preenche os campos configurados
 // e a transferência para humano fica registrada no próprio sistema (sem WhatsApp para terceiros).
 import { normalizeFichaCampos, type FichaCampo } from "./ficha-campos";
+import { blocoCalendario } from "./ai-prompt";
 
 export type FichaIaResult = {
   ficha: Record<string, string>;
@@ -84,6 +85,11 @@ Regras:
 - Sugestões do atendente não são decisões do cliente: só registre algo como combinado se o cliente confirmou.
 - Os valores atuais podem ter sido corrigidos pela equipe: mantenha-os, a menos que a conversa traga informação mais nova e explícita.
 - Valores curtos e objetivos (ex: "8 meses", "Integral").
+- DATAS: nunca escreva "amanhã", "depois de amanhã" ou "semana que vem" na ficha — daqui a dois dias
+  ninguém sabe que dia era. Converta pelo calendário abaixo e grave sempre dia/mês com a hora
+  quando houver (ex: "visita 24/09 às 10h"). Vale para os campos, o resumo e o próximo passo.
+
+${blocoCalendario()}
 - "resumo": 2 a 4 frases com o que o contato quer, o que já foi combinado e o que está pendente.
 - "proximo_passo": uma frase com o que a equipe deve fazer agora.`;
 
