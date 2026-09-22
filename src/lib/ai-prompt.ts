@@ -213,6 +213,41 @@ function montaPersonalidade(c: Partial<AgentConfig>): string {
   ].filter(Boolean).join("; ");
 }
 
+const TZ = "America/Sao_Paulo";
+
+function partesData(d: Date) {
+  const fmt = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: TZ, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
+  });
+  const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
+  return { data: `${p.day}/${p.month}/${p.year}`, diaSemana: p.weekday };
+}
+
+/**
+ * "Depois de amanhã" só vira compromisso depois de virar dia do calendário: sem isso a IA
+ * repete a expressão do cliente e ninguém — nem a equipe — sabe que dia foi combinado.
+ * Entregamos a conta já feita: a data de hoje e a dos próximos dias, no fuso de Brasília.
+ */
+function blocoCalendario(): string {
+  const agora = new Date();
+  const hoje = partesData(agora);
+  const proximos = [1, 2, 3, 4, 5, 6, 7].map((n) => {
+    const d = new Date(agora.getTime() + n * 86_400_000);
+    const { data, diaSemana } = partesData(d);
+    const apelido = n === 1 ? "amanhã" : n === 2 ? "depois de amanhã" : "";
+    return `• ${data} (${diaSemana}${apelido ? `, ${apelido}` : ""})`;
+  });
+  const hora = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(agora);
+
+  return `DATA DE HOJE: ${hoje.data} (${hoje.diaSemana}), ${hora} — horário de Brasília.
+Próximos dias:
+${proximos.join("\n")}
+
+REGRA DE DATAS (OBRIGATÓRIO): nunca repita "amanhã", "depois de amanhã", "semana que vem" ou "quinta" sem dizer a data.
+Ao combinar qualquer dia, converta usando a lista acima e confirme com dia e mês: "então fica quinta, 24/09, às 10h?".
+Se o cliente não disser o dia, peça uma data específica. Não invente dia da semana nem data fora dessa lista.`;
+}
+
 export function buildSystemPrompt(
   c: Partial<AgentConfig>,
   opts?: {
@@ -381,6 +416,8 @@ Se uma frase só já resolve, use UMA parte e pronto (sem o marcador). Nunca mai
   } else {
     blocos.push(`FORMATO DA RESPOSTA: uma mensagem só, curta e natural.`);
   }
+
+  blocos.push(blocoCalendario());
 
   if (c.agendamento_ativo && opts?.googleConectado) {
     const nowIso = new Date().toISOString();
