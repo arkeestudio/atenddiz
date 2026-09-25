@@ -581,11 +581,28 @@ const server = http.createServer(async (req, res) => {
               }
             }
 
-            let chat = window.Store.Chat.get(targetWid) ||
-                       window.Store.Chat.get(targetWid._serialized) ||
-                       (lidWid && window.Store.Chat.get(lidWid)) ||
-                       window.Store.Chat.get(cleanJid) ||
-                       window.Store.Chat.getLatestChatForWid(targetWid);
+            // window.Store é injetado pelo open-wa e some quando o WhatsApp Web atualiza:
+            // sem ele o envio quebrava com "Cannot read properties of undefined (reading
+            // 'get')". O resto do arquivo já pega tudo por window.require, que é estável.
+            const chats = (() => {
+              const doStore = window.Store && window.Store.Chat;
+              if (doStore && typeof doStore.get === "function") return doStore;
+              for (const nome of ["WAWebChatCollection", "WAWebChatStore"]) {
+                try {
+                  const mod = r(nome);
+                  const col = mod?.ChatCollection || mod?.Chat;
+                  if (col && typeof col.get === "function") return col;
+                } catch (e) {}
+              }
+              return null;
+            })();
+            if (!chats) throw new Error("WhatsApp Web mudou e a sessão precisa ser reconectada (lista de conversas não encontrada)");
+
+            let chat = chats.get(targetWid) ||
+                       chats.get(targetWid._serialized) ||
+                       (lidWid && chats.get(lidWid)) ||
+                       chats.get(cleanJid) ||
+                       (typeof chats.getLatestChatForWid === "function" ? chats.getLatestChatForWid(targetWid) : null);
 
             // Contas migradas para LID: criar o chat "na mão" (Chat.add) falha com
             // "Lid is missing in chat table". A ação oficial do WhatsApp Web resolve o LID.
@@ -597,8 +614,8 @@ const server = http.createServer(async (req, res) => {
             }
 
             if (!chat) {
-              window.Store.Chat.add({ id: targetWid });
-              chat = window.Store.Chat.get(targetWid) || window.Store.Chat.get(targetWid._serialized);
+              chats.add({ id: targetWid });
+              chat = chats.get(targetWid) || chats.get(targetWid._serialized);
             }
             if (chat && chat.id) {
               delete chat.id["$1"];
