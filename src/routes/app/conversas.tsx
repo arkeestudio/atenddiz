@@ -10,7 +10,8 @@ import { brand } from "@/config/brand";
 import {
   Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink, RotateCcw,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
-  Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList
+  Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList,
+  Clock
 } from "lucide-react";
 import { sendCsat } from "@/lib/csat.functions";
 import { toast } from "sonner";
@@ -46,6 +47,20 @@ interface Msg {
 }
 
 type Filter = "todas" | "nao_lidas" | "aguardando_humano" | "minhas" | "ia_ativa" | "resolvidas";
+
+// Janela de 24h: conta a partir da última mensagem que o contato mandou. Não bloqueia
+// nada aqui — serve para a equipe ver de relance quanto tempo sobra para responder
+// antes de a conversa esfriar (e de a Meta considerar abordagem fria).
+const JANELA_MS = 24 * 60 * 60_000;
+
+function janela24h(ultimaEntrada?: string | null) {
+  if (!ultimaEntrada) return null;
+  const restante = new Date(ultimaEntrada).getTime() + JANELA_MS - Date.now();
+  if (restante <= 0) return { aberta: false as const, texto: "Janela de 24h encerrada" };
+  const h = Math.floor(restante / 3_600_000);
+  const min = Math.floor((restante % 3_600_000) / 60_000);
+  return { aberta: true as const, texto: h > 0 ? `Faltam ${h}h${String(min).padStart(2, "0")}` : `Faltam ${min} min` };
+}
 
 // E-mail inteiro não cabe na pílula do cabeçalho e ainda entorta o campo. Sem nome
 // cadastrado, mostra só o que vem antes do @ — é o que a equipe reconhece.
@@ -606,6 +621,18 @@ function ConversasPage() {
     [...msgs].filter((m) => m.numero === active).sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at)),
     [msgs, active]);
 
+  // Relógio da janela de 24h: um tique por minuto, só para o contador não ficar parado.
+  const [minuto, setMinuto] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setMinuto((m) => m + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const janela = useMemo(() => {
+    const ultimaEntrada = [...thread].reverse().find((m) => m.direcao === "entrada");
+    return janela24h(ultimaEntrada?.created_at);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread, minuto]);
+
   // Imagens ficam num bucket privado: o texto guarda só o caminho e aqui pedimos
   // uma URL temporária para exibir. Pede em lote, e só o que ainda não temos.
   const [reiniciarAlvo, setReiniciarAlvo] = useState<string | null>(null);
@@ -952,6 +979,22 @@ function ConversasPage() {
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap mt-1">
                     <span className="text-[11px] text-muted-foreground font-mono mr-1">{active}</span>
+                    {janela && (
+                      <span
+                        title={
+                          janela.aberta
+                            ? "Tempo restante da janela de 24h desde a última mensagem do contato"
+                            : "O contato não escreve há mais de 24h. Você ainda pode responder, mas a conversa já esfriou."
+                        }
+                        className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                          janela.aberta
+                            ? "bg-[color:var(--panel-2)] text-muted-foreground border-[color:var(--hairline)]"
+                            : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                        }`}
+                      >
+                        <Clock className="size-2.5" /> {janela.texto}
+                      </span>
+                    )}
                     {(activeCard?.tags ?? []).map((t) => (
                       <span key={t} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[color:var(--panel-2)] text-muted-foreground border border-[color:var(--hairline)] font-medium">
                         #{t}
