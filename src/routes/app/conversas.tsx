@@ -11,8 +11,11 @@ import {
   Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink, RotateCcw,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
   Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList,
-  Clock
+  Clock, MoreVertical
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { sendCsat } from "@/lib/csat.functions";
 import { toast } from "sonner";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
@@ -25,7 +28,7 @@ import { assinarMidiasConversa } from "@/lib/midia.functions";
 import { extrairCaminhoMidia, textoSemMarcadorMidia } from "@/lib/midia-conversa.shared";
 import { FichaAtendimento } from "@/components/ficha/ficha-atendimento";
 import { markConversationSeen, sendTypingPresence } from "@/lib/whatsapp.functions";
-import { LeadDrawer, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
+import { LeadDrawer, FollowupTab, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
 import { listTemplates, saveTemplate, deleteTemplate, type MessageTemplate } from "@/lib/templates.functions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -159,6 +162,7 @@ function ConversasPage() {
   const [composer, setComposer] = useState("");
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [drawerCard, setDrawerCard] = useState<LeadCard | null>(null);
+  const [followupCard, setFollowupCard] = useState<LeadCard | null>(null);
   const [sending, setSending] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -930,11 +934,16 @@ function ConversasPage() {
             </div>
           ) : (
             <>
-              <header className="flex items-center gap-3 px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)] flex-wrap">
+              <header className="flex items-start gap-3 px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
                 <InitialsAvatar name={activeConv?.nome || active} size={38} src={activeCard?.foto_url} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  {/* Linha 1: quem é. Linha 2: o estado da conversa. As ações ficam à direita,
+                      para o cabeçalho não virar uma fileira de botões soltos. */}
+                  <div className="flex items-baseline gap-2 min-w-0">
                     <span className="font-semibold text-sm truncate">{activeConv?.nome || active}</span>
+                    <span className="text-[11px] text-muted-foreground font-mono shrink-0">{active}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                     {stages.length > 0 && (
                       <Select
                         value={activeCard?.stage_id || ""}
@@ -976,9 +985,6 @@ function ConversasPage() {
                         </SelectContent>
                       </Select>
                     )}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                    <span className="text-[11px] text-muted-foreground font-mono mr-1">{active}</span>
                     {janela && (
                       <span
                         title={
@@ -1023,14 +1029,17 @@ function ConversasPage() {
                     )}
                   </div>
                 </div>
-                <div className="ml-auto flex items-center gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void handleGenerateSummary()}
-                    className="bg-purple-500/10 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20"
+                {/* Só o que se usa a cada conversa fica à vista; o resto vai para o menu. */}
+                <div className="ml-auto flex items-center gap-2 shrink-0">
+                  <label
+                    title={iaAtivaAqui ? "IA respondendo este contato" : "IA pausada para este contato"}
+                    className="flex items-center gap-1.5 text-[12px] text-muted-foreground font-medium pr-1"
                   >
-                    <Sparkles className="size-3.5 mr-1 text-purple-600 dark:text-purple-400" /> Resumo IA
+                    <Bot className="size-3.5" /> IA
+                    <Switch checked={iaAtivaAqui} onCheckedChange={(v) => void toggleIa(v)} />
+                  </label>
+                  <Button size="sm" variant="outline" onClick={() => void assumir()}>
+                    <Hand className="size-3.5 mr-1" /> Assumir
                   </Button>
                   {activeCard && (
                     <Button
@@ -1045,31 +1054,41 @@ function ConversasPage() {
                       <ClipboardList className="size-3.5 mr-1" /> Ficha
                     </Button>
                   )}
-                  <label className="flex items-center gap-2 text-[12px] text-muted-foreground font-medium">
-                    <Bot className="size-3.5" /> IA
-                    <Switch checked={iaAtivaAqui} onCheckedChange={(v) => void toggleIa(v)} />
-                  </label>
-                  <Button size="sm" variant="outline" onClick={() => void assumir()}>
-                    <Hand className="size-3.5 mr-1" /> Assumir
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={async () => {
-                    if (!active) return;
-                    try {
-                      await sendCsatFn({ data: { numero: active, contatoNome: activeConv?.nome ?? null } });
-                      toast.success("Pesquisa de satisfação enviada");
-                    } catch (e: any) { toast.error(e?.message ?? "Erro ao enviar"); }
-                  }}>
-                    <Star className="size-3.5 mr-1" /> CSAT
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => active && setReiniciarAlvo(active)}
-                    title="Apaga esta conversa e a ficha para testar a IA como se fosse um contato novo"
-                    className="text-muted-foreground hover:text-red-600 hover:border-red-500/40"
-                  >
-                    <RotateCcw className="size-3.5 mr-1" /> Recomeçar
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" title="Mais ações" className="px-2">
+                        <MoreVertical className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onSelect={() => void handleGenerateSummary()}>
+                        <Sparkles className="size-3.5 mr-2 text-purple-500" /> Resumo da conversa
+                      </DropdownMenuItem>
+                      {activeCard && (
+                        <DropdownMenuItem onSelect={() => setFollowupCard(activeCard)}>
+                          <Zap className="size-3.5 mr-2 text-amber-500" /> Recuperar venda (follow-up)
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        onSelect={async () => {
+                          if (!active) return;
+                          try {
+                            await sendCsatFn({ data: { numero: active, contatoNome: activeConv?.nome ?? null } });
+                            toast.success("Pesquisa de satisfação enviada");
+                          } catch (e: any) { toast.error(e?.message ?? "Erro ao enviar"); }
+                        }}
+                      >
+                        <Star className="size-3.5 mr-2 text-amber-500" /> Enviar pesquisa (CSAT)
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => active && setReiniciarAlvo(active)}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <RotateCcw className="size-3.5 mr-2" /> Recomeçar conversa
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </header>
 
@@ -1634,6 +1653,25 @@ function ConversasPage() {
           onChanged={() => { if (companyId) void load(companyId); }}
         />
       )}
+
+      {/* Recuperação de venda sem sair do atendimento: mesma tela do CRM, aqui do lado da conversa. */}
+      <Dialog open={!!followupCard} onOpenChange={(o) => !o && setFollowupCard(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="size-4 text-amber-500" />
+              Recuperar venda — {followupCard?.nome || followupCard?.numero}
+            </DialogTitle>
+          </DialogHeader>
+          {followupCard && (
+            <FollowupTab
+              card={followupCard}
+              stageName={stages.find((s) => s.id === followupCard.stage_id)?.nome}
+              onChanged={() => { setFollowupCard(null); if (companyId) void load(companyId); }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

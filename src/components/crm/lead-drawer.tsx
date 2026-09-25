@@ -343,7 +343,8 @@ function HistTab({ cardId }: { cardId: string }) {
   );
 }
 
-function FollowupTab({ card, stageName, onChanged }: { card: LeadCard; stageName?: string; onChanged: () => void }) {
+/** Também usada em Conversas: a recuperação de venda precisa estar onde a equipe atende. */
+export function FollowupTab({ card, stageName, onChanged }: { card: LeadCard; stageName?: string; onChanged: () => void }) {
   const [suggestion, setSuggestion] = useState("");
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
