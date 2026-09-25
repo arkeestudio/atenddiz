@@ -741,7 +741,41 @@ const server = http.createServer(async (req, res) => {
           if (!chatId.includes('@')) chatId = `${chatId.replace(/\D/g, '')}@c.us`;
           await s.client.sendSeen(chatId);
         } catch (e) {
-          console.warn('[OpenWA sendSeen]', e.message);
+          // A biblioteca marca o "visto" pelo window.Store, que some quando o WhatsApp Web
+          // atualiza (mesma causa do erro no envio de texto). Tenta pelos módulos, que são
+          // estáveis. É só o tique azul: falhar aqui não atrapalha o atendimento.
+          const page = s.client._page || s.client.page;
+          let ok = false;
+          if (page) {
+            try {
+              ok = await page.evaluate(async (targetChatId) => {
+                const r = window.require;
+                const chats = (() => {
+                  const doStore = window.Store && window.Store.Chat;
+                  if (doStore && typeof doStore.get === "function") return doStore;
+                  for (const nome of ["WAWebChatCollection", "WAWebChatStore"]) {
+                    try {
+                      const mod = r(nome);
+                      const col = mod?.ChatCollection || mod?.Chat;
+                      if (col && typeof col.get === "function") return col;
+                    } catch (err) {}
+                  }
+                  return null;
+                })();
+                const chat = chats && chats.get(targetChatId);
+                if (!chat) return false;
+                for (const nome of ["WAWebUpdateUnreadChatAction", "WAWebSendSeenAction", "WAWebChatSeenAction"]) {
+                  try {
+                    const mod = r(nome);
+                    const fn = mod?.sendSeen || mod?.markChatSeen || mod?.updateChatSeen;
+                    if (typeof fn === "function") { await fn(chat); return true; }
+                  } catch (err) {}
+                }
+                return false;
+              }, chatId);
+            } catch (err) {}
+          }
+          if (!ok) console.warn('[OpenWA sendSeen]', e.message);
         }
       }
       return json({ ok: true });
