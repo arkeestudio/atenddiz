@@ -229,16 +229,19 @@ export const sendWhatsappText = createServerFn({ method: "POST" })
     const { data: inst } = await supabase
       .from("whatsapp_instances").select("instance_name,status").eq("company_id", companyId).maybeSingle();
     if (!inst?.instance_name) throw new Error("WhatsApp não conectado");
-    const { data: recentInbound } = await supabase
+    // A janela de 24h é regra da API oficial da Meta, que não é a usada aqui (OpenWA /
+    // Evolution). Ela impedia a equipe de responder quem escreveu ontem e travava o
+    // follow-up de recuperação, que existe justamente para conversas paradas. O que
+    // protege o número é não abordar quem nunca falou com a empresa — é isso que fica.
+    const { data: inbound } = await supabase
       .from("mensagens")
       .select("id")
       .eq("company_id", companyId)
       .eq("numero", data.numero)
       .eq("direcao", "entrada")
-      .gte("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString())
       .limit(1);
-    if (!recentInbound?.length) {
-      throw new Error("Por segurança, só é possível responder contatos que mandaram mensagem nas últimas 24h. Para iniciar conversa, use a API oficial com template aprovado.");
+    if (!inbound?.length) {
+      throw new Error("Este contato nunca escreveu para a empresa. Para iniciar conversa com um número novo, use Campanhas.");
     }
     const { data: recentOutbound } = await supabase
       .from("mensagens")
