@@ -329,6 +329,11 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           // responder: entra na fila humana, que sabe o que fazer com o atraso.
           const msgTimestamp = Number(data?.t ?? data?.timestamp ?? key?.t ?? 0);
           const idadeMin = msgTimestamp > 0 ? (Date.now() - msgTimestamp * 1000) / 60000 : 0;
+          if (idadeMin > MAX_IDADE_FILA_HUMANA_MIN) {
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            console.log("[whatsapp] histórico do sync guardado, sem fila nem pausa", number, Math.round(idadeMin / 60), "h");
+            return new Response("historico", { status: 200 });
+          }
           if (idadeMin > MAX_IDADE_RESPOSTA_MIN) {
             const { registrarTransferenciaHumano } = await import("@/lib/ficha-atendimento.server");
             await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
@@ -440,6 +445,14 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               .update({ pausado: false })
               .eq("company_id", companyId)
               .eq("numero", number);
+            // Se a IA reassumiu, o contato não está mais esperando a equipe: sem isso o
+            // selo "Transferido" ficava aceso para sempre, mesmo com a IA respondendo.
+            await (supabaseAdmin as any)
+              .from("crm_cards")
+              .update({ aguardando_humano: false, aguardando_desde: null })
+              .eq("company_id", companyId)
+              .eq("numero", number)
+              .eq("aguardando_humano", true);
             console.log("[whatsapp] IA reassumiu após inatividade humana", companyId, number);
           }
 
@@ -595,6 +608,13 @@ const HUMAN_IDLE_RESUME_MS = 30 * 60_000;
 // o que chegou durante a queda, e responder "bom dia" seis horas depois soa pior do que
 // uma pessoa assumindo e explicando a demora.
 const MAX_IDADE_RESPOSTA_MIN = 30;
+
+// Acima disso a mensagem não é "chegou enquanto o sistema estava fora": é histórico que o
+// sync-chats reenvia na reconexão (ele manda as últimas 15 de cada conversa, de semanas
+// atrás). Tratar isso como fila humana enchia o painel de "Transferido" e — pior — pausava
+// a IA de contatos que nunca foram atendidos, que depois escreviam e não eram respondidos.
+// Histórico só é guardado: nada de fila, nada de pausa.
+const MAX_IDADE_FILA_HUMANA_MIN = 12 * 60;
 
 const OPT_OUT_WORDS =["parar", "pare", "cancelar", "sair", "remover", "descadastrar", "stop", "unsubscribe"];
 
