@@ -927,7 +927,9 @@ function ConversasPage() {
         </aside>
 
         {/* THREAD */}
-        <section className="flex flex-col min-h-0 bg-[color:var(--panel-2)]">
+        {/* min-w-0: sem isso um nome longo no cabeçalho alarga a coluna do meio e empurra
+            a ficha para fora da tela (coluna de grid não encolhe sozinha). */}
+        <section className="flex flex-col min-h-0 min-w-0 bg-[color:var(--panel-2)]">
           {!active ? (
             <div className="flex-1 grid place-items-center text-muted-foreground text-sm">
               <div className="text-center"><MessageSquareText className="mx-auto mb-2 size-6" />Selecione uma conversa</div>
@@ -1345,16 +1347,16 @@ function ConversasPage() {
         </section>
 
         {/* INFO */}
-        <aside className="hidden xl:flex flex-col gap-4 border-l border-[color:var(--hairline)] p-5 bg-[color:var(--panel)] overflow-auto">
+        <aside className="hidden xl:flex flex-col gap-4 border-l border-[color:var(--hairline)] p-5 bg-[color:var(--panel)] overflow-auto min-w-0">
           {!active ? (
             <p className="text-xs text-muted-foreground text-center mt-6">Selecione uma conversa para ver os detalhes.</p>
           ) : (
             <>
               <div className="flex flex-col items-center text-center gap-2 pb-4 border-b border-[color:var(--hairline)]">
                 <InitialsAvatar name={activeConv?.nome || active} size={72} src={activeCard?.foto_url} />
-                <div>
-                  <div className="font-semibold text-sm">{activeConv?.nome || active}</div>
-                  <div className="text-[11.5px] text-muted-foreground font-mono">{active}</div>
+                <div className="min-w-0 w-full">
+                  <div className="font-semibold text-sm break-words">{activeConv?.nome || active}</div>
+                  <div className="text-[11.5px] text-muted-foreground font-mono break-all">{active}</div>
                 </div>
               </div>
               <div>
