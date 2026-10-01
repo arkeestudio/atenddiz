@@ -49,7 +49,10 @@ function ConexaoPage() {
   async function alternarIa(ativa: boolean) {
     setMudandoIa(true);
     try {
-      await gravarIa({ data: { ativa } });
+      const r: any = await gravarIa({ data: { ativa } });
+      if (ativa && r?.liberados) {
+        toast.success(`${r.liberados} contato(s) que estavam na fila por causa da troca de número voltaram para a IA.`);
+      }
       setIa({ ativa, motivo: ativa ? null : "Desligada manualmente" });
       toast.success(ativa ? "IA ligada — já responde as próximas mensagens." : "IA desligada. As mensagens continuam entrando no painel.");
     } catch (e: any) {
@@ -93,9 +96,12 @@ function ConexaoPage() {
       // O número conectado mudou: o servidor já desligou a IA por segurança. Avisa alto,
       // porque é o momento em que um número errado começaria a atender clientes reais.
       if (r.numeroTrocou) {
-        setIa({ ativa: false, motivo: `Número mudou para ${r.numero}. Confira antes de religar.` });
+        setIa({
+          ativa: false,
+          motivo: `Número mudou para ${r.numero}. Se foi você quem trocou (um chip de teste, por exemplo), é só religar aqui: os contatos que caíram na fila voltam para a IA.`,
+        });
         toast.warning("Número conectado mudou — a IA foi desligada por segurança.", {
-          description: "Confira se é o número certo e ligue o atendimento automático quando quiser.",
+          description: "Foi você? Então religue a IA logo abaixo. Isso acontece uma vez por troca.",
           duration: 12000,
         });
       }

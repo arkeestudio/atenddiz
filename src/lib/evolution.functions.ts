@@ -104,12 +104,45 @@ export const setIaAtiva = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     const companyId = await resolveCompanyId(supabase, userId);
+    const { data: antes } = await (supabase as any)
+      .from("agent_config")
+      .select("ia_pausada_motivo")
+      .eq("company_id", companyId)
+      .maybeSingle();
     const { error } = await (supabase as any)
       .from("agent_config")
       .update({ ia_ativa: data.ativa, ia_pausada_motivo: data.ativa ? null : "Desligada manualmente" })
       .eq("company_id", companyId);
     if (error) throw new Error(error.message);
-    return { ok: true, ativa: data.ativa };
+
+    // Religou depois de uma troca de número (teste com outro chip, por exemplo): os contatos
+    // que caíram na fila humana por causa disso voltam para a IA sozinhos. Senão a pessoa
+    // tinha que abrir conversa por conversa religando a chavinha de cada uma.
+    let liberados = 0;
+    const motivoAnterior = String(antes?.ia_pausada_motivo || "");
+    if (data.ativa && /^Número conectado mudou/i.test(motivoAnterior)) {
+      const { data: cards } = await (supabase as any)
+        .from("crm_cards")
+        .select("id, numero")
+        .eq("company_id", companyId)
+        .eq("aguardando_humano", true)
+        .ilike("transferencia_motivo", "Número conectado mudou%");
+      const numeros = ((cards ?? []) as Array<{ id: string; numero: string }>).map((c) => c.numero);
+      if (numeros.length) {
+        await (supabase as any)
+          .from("crm_cards")
+          .update({ aguardando_humano: false, aguardando_desde: null })
+          .eq("company_id", companyId)
+          .in("numero", numeros);
+        await (supabase as any)
+          .from("contact_pause")
+          .update({ pausado: false })
+          .eq("company_id", companyId)
+          .in("numero", numeros);
+        liberados = numeros.length;
+      }
+    }
+    return { ok: true, ativa: data.ativa, liberados };
   });
 
 export const checkWhatsappStatus = createServerFn({ method: "POST" })
@@ -160,7 +193,10 @@ export const checkWhatsappStatus = createServerFn({ method: "POST" })
       console.warn("[whatsapp] número trocou — IA desligada por segurança", companyId, row.ultimo_numero, "->", numero);
     }
 
-    if (newStatus !== row.status || (numero && numero !== row.numero)) {
+    // numeroTrocou entra na condição de propósito: se `numero` já estava gravado mas
+    // `ultimo_numero` não, a troca era detectada de novo a cada consulta (a cada 3 s com a
+    // tela aberta) e a IA era desligada sem parar. A troca só pode disparar uma vez.
+    if (newStatus !== row.status || (numero && numero !== row.numero) || numeroTrocou) {
       // `as any`: os tipos gerados do Supabase ainda não têm ultimo_numero/sincronizado_em.
       await (supabase as any)
         .from("whatsapp_instances")
