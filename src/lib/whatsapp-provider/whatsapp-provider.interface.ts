@@ -80,7 +80,7 @@ export interface IWhatsAppProvider {
     companyId: string,
     instanceOrSessionId: string,
     number: string,
-    presence: "composing" | "paused" | "available",
+    presence: "composing" | "recording" | "paused" | "available",
     delayMs?: number,
   ): Promise<void>;
 

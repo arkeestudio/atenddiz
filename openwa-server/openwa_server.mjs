@@ -719,10 +719,16 @@ const server = http.createServer(async (req, res) => {
         try {
           let chatId = body.chatId || '';
           if (!chatId.includes('@')) chatId = `${chatId.replace(/\D/g, '')}@c.us`;
+          // 'composing' = "digitando…", 'recording' = "gravando áudio…". Qualquer outro valor
+          // desliga os dois: o open-wa não desliga sozinho, e um "gravando" esquecido fica
+          // pendurado na tela do cliente.
           if (body.presence === 'composing') {
             await s.client.simulateTyping(chatId, true);
+          } else if (body.presence === 'recording') {
+            await s.client.simulateRecording(chatId, true);
           } else {
             await s.client.simulateTyping(chatId, false);
+            await s.client.simulateRecording(chatId, false).catch(() => {});
           }
         } catch {}
       }

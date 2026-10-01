@@ -242,7 +242,7 @@ export async function evoGetMediaBase64(
   }
 }
 
-export async function evoSendPresence(instanceName: string, number: string, presence: "composing" | "paused" | "available", delayMs = 1500) {
+export async function evoSendPresence(instanceName: string, number: string, presence: "composing" | "recording" | "paused" | "available", delayMs = 1500) {
   try {
     await evo(`/chat/sendPresence/${encodeURIComponent(instanceName)}`, {
       method: "POST",

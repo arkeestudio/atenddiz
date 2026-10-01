@@ -220,7 +220,7 @@ export class EvolutionAdapter implements IWhatsAppProvider {
     _companyId: string,
     instanceOrSessionId: string,
     number: string,
-    presence: "composing" | "paused" | "available",
+    presence: "composing" | "recording" | "paused" | "available",
     delayMs = 1500,
   ): Promise<void> {
     const { evoSendPresence } = await import("../evolution.server");

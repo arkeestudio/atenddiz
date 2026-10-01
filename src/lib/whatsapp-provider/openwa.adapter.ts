@@ -176,7 +176,7 @@ export class OpenWAAdapter implements IWhatsAppProvider {
     _companyId: string,
     instanceOrSessionId: string,
     number: string,
-    presence: "composing" | "paused" | "available",
+    presence: "composing" | "recording" | "paused" | "available",
     delayMs = 1500,
   ): Promise<void> {
     await openwaSendPresence(instanceOrSessionId, number, presence, delayMs);

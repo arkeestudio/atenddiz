@@ -228,7 +228,7 @@ export async function openwaGetMedia(sessionId: string, messageId: string): Prom
   }
 }
 
-export async function openwaSendPresence(sessionId: string, number: string, presence: "composing" | "paused" | "available", delayMs = 1500) {
+export async function openwaSendPresence(sessionId: string, number: string, presence: "composing" | "recording" | "paused" | "available", delayMs = 1500) {
   try {
     const chatId = number.includes("@") ? number : `${number.replace(/\D/g, "")}@c.us`;
     await openwaFetch(`/sessions/${encodeURIComponent(sessionId)}/chat/presence`, {

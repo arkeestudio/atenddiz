@@ -279,15 +279,24 @@ export async function runAiReply(opts: {
     if (!decisao.ok) {
       vozResultado = `texto (${decisao.motivo})`;
     } else {
-      if (provider.sendPresence) {
-        await provider.sendPresence(companyId, instanceName, number, "composing", 2500).catch(() => {});
-      }
+      // "Gravando áudio…" aparece no celular do cliente enquanto o TTS gera (5-6 s) e segura
+      // mais um pouco em função da duração do áudio, como alguém que grava de verdade.
+      // Não espera a duração toda: 13 s de "gravando" antes de responder é lento demais.
+      const presenca = (p: "recording" | "paused") =>
+        provider.sendPresence ? provider.sendPresence(companyId, instanceName, number, p).catch(() => {}) : Promise.resolve();
+      await presenca("recording");
       const dataUrl = await gerarNotaDeVoz(falado, cfg?.voz_nome);
       if (!dataUrl) {
         vozResultado = "texto (TTS falhou)";
+        await presenca("paused");
       } else {
         try {
+          // WAV 24 kHz, 16 bits, mono: 48.000 bytes por segundo. Base64 ocupa 4/3 do tamanho.
+          const bytes = (dataUrl.length - dataUrl.indexOf(",") - 1) * 0.75;
+          const segundosAudio = Math.max(0, (bytes - 44) / 48000);
+          await new Promise((r) => setTimeout(r, Math.min(4000, Math.max(1000, segundosAudio * 300))));
           const sent: any = await provider.sendVoice(companyId, instanceName, number, dataUrl);
+          await presenca("paused");
           const { AUDIO_ENVIADO, audioTranscribedText } = await import("@/lib/audio-labels");
           await supabaseAdmin.from("mensagens").insert({
             company_id: companyId,
@@ -306,6 +315,7 @@ export async function runAiReply(opts: {
         } catch (e: any) {
           console.error("[voz] envio falhou, indo em texto:", e?.message);
           vozResultado = "texto (envio do áudio falhou)";
+          await presenca("paused");
         }
       }
     }
