@@ -297,7 +297,8 @@ export async function runAiReply(opts: {
             direcao: "saida",
             autor: "ia",
             texto: audioTranscribedText(AUDIO_ENVIADO, falado),
-            whatsapp_message_id: sent?.messageId ?? null,
+            // O sendPtt do open-wa nem sempre devolve o id como texto; não guarda lixo na coluna.
+            whatsapp_message_id: typeof sent?.messageId === "string" ? sent.messageId : null,
             status_entrega: "enviado",
           } as any);
           enviouVoz = true;

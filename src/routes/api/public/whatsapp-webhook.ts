@@ -158,6 +158,33 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               if (duplicate) return new Response("duplicate", { status: 200 });
             }
 
+            // Eco da própria IA: o OpenWA devolve (fromMe) tudo que sai do número, inclusive o
+            // que a IA acabou de mandar. Texto costuma bater pelo id e cai no `duplicate` acima;
+            // a nota de voz volta com id diferente do que o sendPtt devolveu, virava uma segunda
+            // mensagem "de atendente" e era transcrita — o cliente via o áudio e, logo depois,
+            // o texto dele. Reconhece pelo conteúdo e pelo horário e só guarda o id na original.
+            {
+              const desde = new Date(Date.now() - 60_000).toISOString();
+              let q = (supabaseAdmin as any)
+                .from("mensagens")
+                .select("id, whatsapp_message_id")
+                .eq("company_id", companyId)
+                .eq("numero", number)
+                .eq("direcao", "saida")
+                .eq("autor", "ia")
+                .gte("created_at", desde)
+                .order("created_at", { ascending: false })
+                .limit(1);
+              q = audioMsg ? q.like("texto", `${AUDIO_ENVIADO}%`) : q.eq("texto", text || "");
+              const { data: ecoIa } = await q.maybeSingle();
+              if (ecoIa) {
+                if (whatsappMessageId && !ecoIa.whatsapp_message_id) {
+                  await (supabaseAdmin as any).from("mensagens").update({ whatsapp_message_id: whatsappMessageId }).eq("id", ecoIa.id);
+                }
+                return new Response("eco-ia", { status: 200 });
+              }
+            }
+
             // Imagem enviada pelo celular: guarda o arquivo e deixa só o marcador no texto.
             let textoSaida = text || (audioMsg ? audioPendingText(AUDIO_ENVIADO) : imageMsg ? "📷 Imagem" : "");
             if (imageMsg && bodyEhBase64) {
