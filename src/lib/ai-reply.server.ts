@@ -71,7 +71,7 @@ export async function runAiReply(opts: {
 
   let { data: cardRow } = await supabaseAdmin
     .from("crm_cards")
-    .select("status, nome, stage_id, ficha, ficha_resumo")
+    .select("id, status, nome, stage_id, ficha, ficha_resumo")
     .eq("company_id", companyId)
     .eq("numero", number)
     .maybeSingle();
@@ -79,7 +79,7 @@ export async function runAiReply(opts: {
     // Banco ainda sem a migração da ficha: segue sem ela.
     ({ data: cardRow } = await supabaseAdmin
       .from("crm_cards")
-      .select("status, nome, stage_id")
+      .select("id, status, nome, stage_id")
       .eq("company_id", companyId)
       .eq("numero", number)
       .maybeSingle());
@@ -93,7 +93,27 @@ export async function runAiReply(opts: {
     .eq("company_id", companyId)
     .maybeSingle();
 
+  // A IA só pode oferecer horário que a agenda não tenha: os ocupados dos próximos dias vão
+  // no prompt. Se o Google falhar, segue sem a lista — o conflito é conferido de novo na hora
+  // de marcar, então o pior caso é a IA propor um horário que o sistema vai recusar.
+  const agendaLigada = !!googleIntegration?.conectado && !!cfg?.agendamento_ativo;
+  let ocupados: Array<{ inicio: string; fim: string }> | null = null;
+  if (agendaLigada) {
+    try {
+      const { listarOcupados } = await import("@/lib/google.server");
+      const { DIAS_OCUPADOS_NO_PROMPT } = await import("@/lib/agenda.server");
+      const agora = new Date();
+      ocupados = await listarOcupados(
+        supabaseAdmin, companyId, agora.toISOString(),
+        new Date(agora.getTime() + DIAS_OCUPADOS_NO_PROMPT * 86_400_000).toISOString(),
+      );
+    } catch (e: any) {
+      console.warn("[agenda] não foi possível ler os ocupados:", e?.message);
+    }
+  }
+
   const responderEmPartes = cfg?.responder_em_partes ?? true;
+  const { descreverOcupados } = await import("@/lib/agenda.server");
   const system = buildSystemPrompt(cfg ?? {}, {
     responderEmPartes,
     estagioAtual,
@@ -101,6 +121,7 @@ export async function runAiReply(opts: {
     produtos,
     stages: stages.map((s) => ({ nome: s.nome, tipo: s.tipo })),
     googleConectado: !!googleIntegration?.conectado,
+    ocupados: ocupados ? descreverOcupados(ocupados) : undefined,
     ficha: { campos: (cardRow as any)?.ficha ?? null, resumo: (cardRow as any)?.ficha_resumo ?? null },
   });
 
@@ -144,6 +165,7 @@ export async function runAiReply(opts: {
   }
 
   let rawReply = "";
+  const inicioIa = Date.now();
   try {
     rawReply = await lovableAiChat(messages, {
       provider: providerChoice,
@@ -203,18 +225,41 @@ export async function runAiReply(opts: {
     }
   }
 
-  // Cria evento no Google Agenda se a IA marcou [AGENDAR: ...]
+  // [AGENDAR: ...] é proposta da IA, não decisão. Antes de virar evento: a data faz sentido?
+  // a agenda está livre naquele intervalo (lida de novo agora, não a de minutos atrás)?
+  // já não foi marcado? Qualquer "não" vira um aviso honesto ao cliente, em vez de um
+  // "agendado!" que a coordenação descobriria em cima da hora que não existia.
+  let agendaResultado: string | null = null;
   if (agendar && googleIntegration?.conectado) {
-    try {
-      const { createCalendarEventForCompany } = await import("@/lib/google.server");
-      await createCalendarEventForCompany(supabaseAdmin, companyId, {
-        titulo: agendar.titulo,
-        inicio: agendar.inicio,
-        fim: agendar.fim,
-        descricao: `Agendado via WhatsApp — ${pushName || number}`,
-      });
-    } catch (e: any) {
-      console.error("[agendar]", e?.message);
+    const { validarAgendamento, conflita, jaAgendado, descreverHorario } = await import("@/lib/agenda.server");
+    const { listarOcupados, createCalendarEventForCompany } = await import("@/lib/google.server");
+    const v = validarAgendamento(agendar);
+    if (!v.ok) {
+      agendaResultado = `recusado: ${v.motivo}`;
+      finalParts.push(`Só um ajuste: não consegui registrar esse horário, ${v.motivo}. Pode me confirmar o dia e a hora de novo?`);
+    } else {
+      try {
+        const ocupadosAgora = await listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
+        if (conflita(ocupadosAgora, v.inicio, v.fim)) {
+          agendaResultado = `conflito em ${descreverHorario(v.inicio)}`;
+          finalParts.push(`Ih, ${descreverHorario(v.inicio)} acabou de ficar ocupado na agenda. Tem outro horário que fica bom para você?`);
+        } else if (await jaAgendado(supabaseAdmin, companyId, (cardRow as any)?.id ?? null, v.inicio)) {
+          agendaResultado = "já existia, não duplicou";
+        } else {
+          await createCalendarEventForCompany(supabaseAdmin, companyId, {
+            titulo: agendar.titulo,
+            inicio: v.inicio.toISOString(),
+            fim: v.fim.toISOString(),
+            descricao: `Agendado via WhatsApp — ${pushName || number}`,
+            cardId: (cardRow as any)?.id ?? null,
+          });
+          agendaResultado = `criado ${descreverHorario(v.inicio)}`;
+        }
+      } catch (e: any) {
+        agendaResultado = `erro: ${e?.message}`;
+        console.error("[agendar]", e?.message);
+        finalParts.push("Não consegui confirmar na agenda agora. Vou pedir para a equipe confirmar esse horário com você.");
+      }
     }
   }
 
@@ -267,6 +312,31 @@ export async function runAiReply(opts: {
   // Contato novo: busca nome e foto de perfil depois que o card existe.
   const { sincronizarPerfilContato } = await import("@/lib/contato-perfil.server");
   await sincronizarPerfilContato({ admin: supabaseAdmin, companyId, instanceName, numero: number });
+
+  // Rastro de cada resposta no histórico do lead: é o que permite explicar depois "por que a
+  // IA disse isso" — qual modelo, quanto demorou, que marcadores emitiu, o que a agenda fez.
+  // Sem isso a investigação de um preço errado era console.log perdido.
+  try {
+    const { data: cardLog } = await supabaseAdmin
+      .from("crm_cards").select("id").eq("company_id", companyId).eq("numero", number).maybeSingle();
+    if (cardLog?.id) {
+      const segundos = ((Date.now() - inicioIa) / 1000).toFixed(1);
+      const pedacos = [
+        `${finalParts.length} bolha(s), ${modelChoice.replace(/^google\//, "")}, ${segundos}s`,
+        stage ? `etapa: ${stage}` : "sem etapa",
+        agendaResultado ? `agenda: ${agendaResultado}` : null,
+        encaminharHumano ? `transferiu: ${encaminharHumano}` : null,
+        pixValor ? `pix: R$ ${pixValor}` : null,
+        fotoUrl ? "enviou foto" : null,
+        !rawReply ? "SEM RESPOSTA DO MODELO" : null,
+      ].filter(Boolean);
+      await supabaseAdmin.from("lead_evento").insert({
+        company_id: companyId, card_id: cardLog.id, tipo: "ia_resposta", descricao: pedacos.join(" · "),
+      });
+    }
+  } catch (e: any) {
+    console.warn("[ia_resposta] não registrou o rastro:", e?.message);
+  }
 
   // Ficha do atendimento: na transferência a equipe é avisada no painel (sem WhatsApp para terceiros);
   // fora dela, a ficha é mantida atualizada em intervalos.

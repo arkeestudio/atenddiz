@@ -257,6 +257,8 @@ export function buildSystemPrompt(
     produtos?: ProdutoBrief[];
     stages?: StageBrief[];
     googleConectado?: boolean;
+    /** Intervalos já ocupados na agenda (texto pronto, um por linha). A IA não oferece esses. */
+    ocupados?: string[];
     /** Memória do sistema sobre o contato (ficha), para não reenviar a conversa inteira. */
     ficha?: { campos?: Record<string, string> | null; resumo?: string | null };
   },
@@ -428,8 +430,17 @@ Hoje é ${nowIso} (UTC, fuso America/Sao_Paulo). Quando o cliente CONFIRMAR um h
 [AGENDAR: AAAA-MM-DDTHH:MM | AAAA-MM-DDTHH:MM | título curto]
 A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 min"} se o cliente não disser). ` +
         `Use o fuso -03:00 nos horários (ex.: 2026-06-20T15:00:00-03:00). Esse marcador é interno e NÃO aparece pro cliente. ` +
-        `Só emita o marcador quando o cliente confirmou claramente. Nunca invente horários que o cliente não disse.`,
+        `Só emita o marcador quando o cliente confirmou claramente. Nunca invente horários que o cliente não disse. ` +
+        `Só ofereça horários dentro das janelas disponíveis da empresa e nunca um horário da lista de ocupados abaixo. ` +
+        `O sistema confere a agenda antes de marcar: se o horário não estiver livre, ele avisa o cliente.`,
     );
+    if (opts?.ocupados?.length) {
+      blocos.push(
+        `HORÁRIOS JÁ OCUPADOS NA AGENDA (não ofereça, não marque):\n${opts.ocupados.map((o) => `• ${o}`).join("\n")}`,
+      );
+    } else if (opts?.ocupados) {
+      blocos.push("AGENDA: nenhum horário ocupado nos próximos dias.");
+    }
   }
 
   blocos.push(
