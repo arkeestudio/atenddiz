@@ -20,7 +20,9 @@ export function RoutePendingComponent() {
   );
 }
 
-export function RouteErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+// A partir do router 1.170 o erro chega como `unknown`. Normaliza para Error.
+export function RouteErrorComponent({ error: bruto, reset }: { error: unknown; reset: () => void }) {
+  const error = bruto instanceof Error ? bruto : new Error(typeof bruto === "string" ? bruto : JSON.stringify(bruto));
   console.error(error);
   const router = useRouter();
   useEffect(() => {
