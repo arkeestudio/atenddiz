@@ -24,6 +24,8 @@ export async function runAiReply(opts: {
   cfg?: any;
   isReceipt?: boolean;
   receiptAnalysis?: any;
+  /** O cliente mandou nota de voz (o texto aqui é a transcrição). Decide se a resposta volta em áudio. */
+  entradaFoiAudio?: boolean;
 }): Promise<string> {
   const { admin: supabaseAdmin, companyId, userId, instanceName, number, pushName, text, stages } = opts;
   const isReceipt = !!opts.isReceipt;
@@ -263,7 +265,52 @@ export async function runAiReply(opts: {
     }
   }
 
-  for (let i = 0; i < finalParts.length; i++) {
+  // Nota de voz: a resposta inteira numa fala só, quando a empresa ligou e o conteúdo
+  // permite (curto, sem valor/data/link). O texto fica salvo na conversa do mesmo jeito,
+  // para a equipe ler e a IA lembrar. Se não der, cai no envio em texto logo abaixo.
+  const modoVoz = String(cfg?.voz_resposta || "nunca");
+  const querVoz = modoVoz === "sempre" || (modoVoz === "quando_audio" && !!opts.entradaFoiAudio);
+  let vozResultado: string | null = null;
+  let enviouVoz = false;
+  if (querVoz && finalParts.length && provider.sendVoice) {
+    const { deveVirarAudio, gerarNotaDeVoz } = await import("@/lib/voz.server");
+    const falado = finalParts.filter(Boolean).join(" ");
+    const decisao = deveVirarAudio(falado);
+    if (!decisao.ok) {
+      vozResultado = `texto (${decisao.motivo})`;
+    } else {
+      if (provider.sendPresence) {
+        await provider.sendPresence(companyId, instanceName, number, "composing", 2500).catch(() => {});
+      }
+      const dataUrl = await gerarNotaDeVoz(falado, cfg?.voz_nome);
+      if (!dataUrl) {
+        vozResultado = "texto (TTS falhou)";
+      } else {
+        try {
+          const sent: any = await provider.sendVoice(companyId, instanceName, number, dataUrl);
+          const { AUDIO_ENVIADO, audioTranscribedText } = await import("@/lib/audio-labels");
+          await supabaseAdmin.from("mensagens").insert({
+            company_id: companyId,
+            user_id: userId,
+            numero: number,
+            contato_nome: pushName ?? null,
+            direcao: "saida",
+            autor: "ia",
+            texto: audioTranscribedText(AUDIO_ENVIADO, falado),
+            whatsapp_message_id: sent?.messageId ?? null,
+            status_entrega: "enviado",
+          } as any);
+          enviouVoz = true;
+          vozResultado = `áudio (${cfg?.voz_nome || "Zephyr"})`;
+        } catch (e: any) {
+          console.error("[voz] envio falhou, indo em texto:", e?.message);
+          vozResultado = "texto (envio do áudio falhou)";
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < finalParts.length && !enviouVoz; i++) {
     const part = finalParts[i];
     if (!part) continue;
     try {
@@ -325,6 +372,7 @@ export async function runAiReply(opts: {
         `${finalParts.length} bolha(s), ${modelChoice.replace(/^google\//, "")}, ${segundos}s`,
         stage ? `etapa: ${stage}` : "sem etapa",
         agendaResultado ? `agenda: ${agendaResultado}` : null,
+        vozResultado ? `voz: ${vozResultado}` : null,
         encaminharHumano ? `transferiu: ${encaminharHumano}` : null,
         pixValor ? `pix: R$ ${pixValor}` : null,
         fotoUrl ? "enviou foto" : null,

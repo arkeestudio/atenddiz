@@ -16,6 +16,7 @@ import { brand } from "@/config/brand";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { testAiReply } from "@/lib/evolution.functions";
 import { FICHA_CAMPOS_PADRAO, normalizeFichaCampos, novoIdCampo, type FichaCampo } from "@/lib/ficha-campos";
+import { MODOS_VOZ, VOZES, VOZ_PADRAO, type ModoVoz } from "@/lib/voz.shared";
 import { generateAgentConfig, analyzeBusinessBrief, type BriefQuestion } from "@/lib/agent-ai.functions";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { defaultHours, DIA_LABEL, type BusinessHours } from "@/lib/business-hours";
@@ -69,6 +70,8 @@ function AgentePage() {
   const [palavraPausar, setPalavraPausar] = useState("/pausar");
   const [palavraDespausar, setPalavraDespausar] = useState("/despausar");
   const [responderEmPartes, setResponderEmPartes] = useState(true);
+  const [vozResposta, setVozResposta] = useState<ModoVoz>("nunca");
+  const [vozNome, setVozNome] = useState(VOZ_PADRAO);
   const [baseConhecimento, setBaseConhecimento] = useState("");
   const [horarios, setHorarios] = useState<BusinessHours>(defaultHours());
   const [msgFora, setMsgFora] = useState("Olá! No momento estamos fora do horário de atendimento. Retornamos em breve.");
@@ -91,6 +94,8 @@ function AgentePage() {
       setCfg(data);
       setFocoAtendimento((data.foco_atendimento as any) || "vendas");
       setTamanhoResposta((data.tamanho_resposta as any) || "curtas");
+      setVozResposta(((data as any).voz_resposta as ModoVoz) || "nunca");
+      setVozNome((data as any).voz_nome || VOZ_PADRAO);
       setTelefone(data.telefone_transferencia || "");
       setPalavraPausar(data.palavra_pausar || "/pausar");
       setPalavraDespausar(data.palavra_despausar || "/despausar");
@@ -193,6 +198,8 @@ function AgentePage() {
       palavra_pausar: palavraPausar,
       palavra_despausar: palavraDespausar,
       responder_em_partes: responderEmPartes,
+      voz_resposta: vozResposta,
+      voz_nome: vozNome,
       base_conhecimento: baseConhecimento,
       horarios_atendimento: horarios,
       mensagem_fora_horario: msgFora,
@@ -680,6 +687,36 @@ function AgentePage() {
                 <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3">
                   <span className="text-sm font-medium">Responder em partes (1-3 bolhas)</span>
                   <Switch checked={responderEmPartes} onCheckedChange={setResponderEmPartes} />
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Responder em áudio (nota de voz)</Label>
+                    <Select value={vozResposta} onValueChange={(v) => setVozResposta(v as ModoVoz)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MODOS_VOZ.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.rotulo}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11.5px] text-muted-foreground">
+                      {MODOS_VOZ.find((m) => m.id === vozResposta)?.ajuda}
+                      {vozResposta !== "nunca" && " Respostas longas também vão em texto. O texto fica salvo na conversa."}
+                    </p>
+                  </div>
+                  {vozResposta !== "nunca" && (
+                    <div className="space-y-1.5">
+                      <Label>Voz</Label>
+                      <Select value={vozNome} onValueChange={setVozNome}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {VOZES.map((v) => (
+                            <SelectItem key={v.id} value={v.id}>{v.rotulo}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               </CollapsibleContent>
             </div>

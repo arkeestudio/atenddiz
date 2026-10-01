@@ -527,6 +527,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
 
           const result = await runAiReply({
             admin: supabaseAdmin, companyId, userId, instanceName, number, pushName, text, stages, cfg, isReceipt, receiptAnalysis,
+            entradaFoiAudio: !!audioMsg,
           });
           return new Response(result, { status: 200 });
         } catch (e: any) {
