@@ -4,7 +4,7 @@ export type ModoVoz = "nunca" | "sempre" | "quando_audio";
 
 export const MODOS_VOZ: Array<{ id: ModoVoz; rotulo: string; ajuda: string }> = [
   { id: "nunca", rotulo: "Desligado (só texto)", ajuda: "A IA responde sempre por escrito." },
-  { id: "sempre", rotulo: "Sempre que der", ajuda: "Respostas curtas viram nota de voz. Valores, datas, endereço e links continuam em texto." },
+  { id: "sempre", rotulo: "Sempre que der", ajuda: "Respostas curtas viram nota de voz, inclusive com valores e datas. Só link e código PIX continuam em texto." },
   { id: "quando_audio", rotulo: "Só quando o cliente mandar áudio", ajuda: "Responde áudio com áudio e texto com texto." },
 ];
 

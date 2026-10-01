@@ -13,25 +13,52 @@ const MAX_PALAVRAS_AUDIO = 45;
 
 const ESTILO = "simpática e acolhedora, falando português do Brasil com naturalidade, no ritmo de uma conversa de WhatsApp";
 
-/** Decide se a resposta vira áudio. O motivo vai para o rastro da IA quando não vira. */
+/**
+ * Decide se a resposta vira áudio. O motivo vai para o rastro da IA quando não vira.
+ * Valor, data e horário viram áudio também — a escola preferiu explicar falando, e o
+ * texto fica salvo na conversa de qualquer jeito. Só não vira o que é para copiar: link
+ * e código PIX copia-e-cola.
+ */
 export function deveVirarAudio(texto: string): { ok: true } | { ok: false; motivo: string } {
   const palavras = texto.split(/\s+/).filter(Boolean).length;
   if (palavras > MAX_PALAVRAS_AUDIO) return { ok: false, motivo: `longa (${palavras} palavras)` };
-  // De ouvido ninguém guarda "mil trezentos e quarenta e nove reais", nem um link, nem um
-  // horário. Isso a pessoa precisa reler — fica em texto.
-  if (/R\$\s?\d/.test(texto)) return { ok: false, motivo: "tem valor" };
-  if (/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/.test(texto)) return { ok: false, motivo: "tem data" };
-  if (/\b\d{1,2}(:\d{2}|h\d{0,2})\b/i.test(texto)) return { ok: false, motivo: "tem horário" };
   if (/https?:\/\/|www\./i.test(texto)) return { ok: false, motivo: "tem link" };
-  if (/\bpix\b|```/i.test(texto)) return { ok: false, motivo: "tem pix" };
-  if (/\b\d{8,}\b/.test(texto)) return { ok: false, motivo: "tem telefone/código" };
-  if (/\b(rua|avenida|av\.|travessa|nº|n°|cep)\b/i.test(texto)) return { ok: false, motivo: "tem endereço" };
+  if (/```|copia e cola/i.test(texto)) return { ok: false, motivo: "tem código pix" };
   return { ok: true };
+}
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+/**
+ * Escrito → falado. O TTS lê "R$ 1.349,45" como "um ponto trezentos e quarenta e nove
+ * vírgula quarenta e cinco"; "03/10" como "três barra dez". Converte antes.
+ */
+export function paraFala(texto: string): string {
+  let t = texto;
+  // R$ 1.349,45 → 1349 reais e 45 centavos · R$ 630,00 → 630 reais · R$ 1.134 → 1134 reais
+  t = t.replace(/R\$\s?(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{2}))?/g, (_m, inteiro: string, cent?: string) => {
+    const reais = inteiro.replace(/\./g, "");
+    const r = `${reais} ${reais === "1" ? "real" : "reais"}`;
+    return cent && cent !== "00" ? `${r} e ${Number(cent)} centavos` : r;
+  });
+  // 03/10/2026 ou 03/10 → 3 de outubro (o ano só se vier escrito)
+  t = t.replace(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/g, (m, d: string, mes: string, ano?: string) => {
+    const mi = Number(mes);
+    if (mi < 1 || mi > 12) return m;
+    return `${Number(d)} de ${MESES[mi - 1]}${ano ? ` de ${ano}` : ""}`;
+  });
+  // 10h30 → 10 e 30 · 10h → 10 horas · 10:30 → 10 e 30 · 10:00 → 10 horas
+  t = t.replace(/\b(\d{1,2})(?:h|:)(\d{2})?\b/gi, (_m, h: string, min?: string) =>
+    min && min !== "00" ? `${Number(h)} e ${Number(min)}` : `${Number(h)} horas`,
+  );
+  // 50% → 50 por cento
+  t = t.replace(/(\d+)\s?%/g, "$1 por cento");
+  return t;
 }
 
 // O que vai para a voz é só a fala: sem emoji, sem asterisco de negrito, sem o separador de bolhas.
 function limparParaFala(texto: string): string {
-  return texto
+  return paraFala(texto)
     .replace(/\|\|\|/g, " ")
     .replace(/[*_~`]+/g, "")
     .replace(/\p{Extended_Pictographic}|️|‍/gu, "")
