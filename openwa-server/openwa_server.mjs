@@ -684,7 +684,17 @@ const server = http.createServer(async (req, res) => {
         const base64Data = body.base64 || '';
         const audio = base64Data ? await toOggOpusDataUrl(base64Data) : body.audioUrl || '';
         if (!audio) return json({ error: 'Áudio vazio' }, 400);
-        const result = await s.client.sendPtt(chatId, audio);
+        // sendPtt despacha o áudio e depois espera o ack do WhatsApp, que pode demorar minutos
+        // logo após um restart. Esperar isso aqui estourava o nginx (180 s), o app recebia erro
+        // com o áudio já entregue e reenviava tudo em texto. 20 s sem ack = "enviado, sem id".
+        const result = await Promise.race([
+          s.client.sendPtt(chatId, audio),
+          new Promise((resolve) => setTimeout(() => resolve('__sem_ack__'), 20000)),
+        ]);
+        if (result === '__sem_ack__') {
+          console.warn(`[OpenWA Server] sendPtt sem ack em 20s para ${chatId}; áudio provavelmente entregue`);
+          return json({ messageId: null, semAck: true });
+        }
         return json({ messageId: result });
       } catch (err) {
         console.error(`[OpenWA Server] sendPtt error for ${chatId}:`, err.message);

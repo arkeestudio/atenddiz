@@ -290,15 +290,18 @@ export async function runAiReply(opts: {
         vozResultado = "texto (TTS falhou)";
         await presenca("paused");
       } else {
-        try {
-          // WAV 24 kHz, 16 bits, mono: 48.000 bytes por segundo. Base64 ocupa 4/3 do tamanho.
-          const bytes = (dataUrl.length - dataUrl.indexOf(",") - 1) * 0.75;
-          const segundosAudio = Math.max(0, (bytes - 44) / 48000);
-          await new Promise((r) => setTimeout(r, Math.min(4000, Math.max(1000, segundosAudio * 300))));
-          const sent: any = await provider.sendVoice(companyId, instanceName, number, dataUrl);
-          await presenca("paused");
-          const { AUDIO_ENVIADO, audioTranscribedText } = await import("@/lib/audio-labels");
-          await supabaseAdmin.from("mensagens").insert({
+        // WAV 24 kHz, 16 bits, mono: 48.000 bytes por segundo. Base64 ocupa 4/3 do tamanho.
+        const bytes = (dataUrl.length - dataUrl.indexOf(",") - 1) * 0.75;
+        const segundosAudio = Math.max(0, (bytes - 44) / 48000);
+        await new Promise((r) => setTimeout(r, Math.min(4000, Math.max(1000, segundosAudio * 300))));
+
+        // A linha da nota de voz entra ANTES do envio: o WhatsApp devolve o eco (fromMe) em
+        // segundos, e o webhook só reconhece o eco se a mensagem da IA já estiver gravada.
+        // Se o envio falhar de verdade, a linha é apagada e a resposta vai em texto.
+        const { AUDIO_ENVIADO, audioTranscribedText } = await import("@/lib/audio-labels");
+        const { data: linhaVoz } = await supabaseAdmin
+          .from("mensagens")
+          .insert({
             company_id: companyId,
             user_id: userId,
             numero: number,
@@ -306,16 +309,36 @@ export async function runAiReply(opts: {
             direcao: "saida",
             autor: "ia",
             texto: audioTranscribedText(AUDIO_ENVIADO, falado),
-            // O sendPtt do open-wa nem sempre devolve o id como texto; não guarda lixo na coluna.
-            whatsapp_message_id: typeof sent?.messageId === "string" ? sent.messageId : null,
             status_entrega: "enviado",
-          } as any);
-          enviouVoz = true;
-          vozResultado = `áudio (${cfg?.voz_nome || "Zephyr"})`;
-        } catch (e: any) {
-          console.error("[voz] envio falhou, indo em texto:", e?.message);
-          vozResultado = "texto (envio do áudio falhou)";
+          } as any)
+          .select("id")
+          .maybeSingle();
+
+        try {
+          const sent: any = await provider.sendVoice(companyId, instanceName, number, dataUrl);
           await presenca("paused");
+          // O sendPtt do open-wa nem sempre devolve o id como texto; não guarda lixo na coluna.
+          if (typeof sent?.messageId === "string" && linhaVoz?.id) {
+            await supabaseAdmin.from("mensagens").update({ whatsapp_message_id: sent.messageId } as any).eq("id", linhaVoz.id);
+          }
+          enviouVoz = true;
+          vozResultado = sent?.semAck ? `áudio (${cfg?.voz_nome || "Zephyr"}, sem confirmação)` : `áudio (${cfg?.voz_nome || "Zephyr"})`;
+        } catch (e: any) {
+          await presenca("paused");
+          // Erro de rede/timeout chega DEPOIS de o áudio já ter saído do servidor na maioria
+          // das vezes (foi assim que o cliente recebeu o áudio e, 3 min depois, o mesmo texto).
+          // Só cai para texto quando o servidor recusou na hora.
+          const msg = String(e?.message || "");
+          const recusou = /Áudio vazio|ffmpeg|Session not connected|400|500/i.test(msg) && !/indisponível|timeout|504|502/i.test(msg);
+          if (recusou) {
+            console.error("[voz] servidor recusou o áudio, indo em texto:", msg);
+            if (linhaVoz?.id) await supabaseAdmin.from("mensagens").delete().eq("id", linhaVoz.id);
+            vozResultado = "texto (servidor recusou o áudio)";
+          } else {
+            console.warn("[voz] sem resposta do servidor; áudio provavelmente entregue, não reenvia em texto:", msg);
+            enviouVoz = true;
+            vozResultado = `áudio (${cfg?.voz_nome || "Zephyr"}, sem confirmação do servidor)`;
+          }
         }
       }
     }
