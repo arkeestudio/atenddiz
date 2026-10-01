@@ -151,6 +151,10 @@ export async function runAiReply(opts: {
       openaiKey: (cfg as any)?.openai_api_key || "",
       anthropicKey: (cfg as any)?.anthropic_api_key || "",
       fallbackToGemini: true,
+      // Atendimento é literal: preço, horário e política vêm do prompt, não da imaginação.
+      temperature: 0.3,
+      // Resposta de WhatsApp em até 3 bolhas + marcadores internos cabe folgado aqui.
+      maxTokens: 1500,
     });
   } catch (e: any) {
     console.error("[ai]", e?.message);

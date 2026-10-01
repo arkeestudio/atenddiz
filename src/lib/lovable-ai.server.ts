@@ -18,7 +18,16 @@ export interface AiProviderConfig {
   geminiKey?: string;
   /** Conversas reais: se OpenAI/Anthropic falhar (crédito, chave, sobrecarga), responde com Gemini em vez de silenciar. */
   fallbackToGemini?: boolean;
+  /**
+   * 0 a 1. Sem definir, vale o padrão do provedor (o mais criativo), e foi assim que a IA
+   * saiu inventando preço e condição. Atendimento e extração de ficha pedem valor baixo.
+   */
+  temperature?: number;
+  /** Teto da resposta. Só OpenAI/Anthropic: no Gemini 2.5 o raciocínio interno conta no teto e cortaria a resposta. */
+  maxTokens?: number;
 }
+
+type GenOpts = Pick<AiProviderConfig, "temperature" | "maxTokens">;
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -31,30 +40,31 @@ export async function lovableAiChat(
       ? { provider: "gemini", model: modelOrConfig }
       : modelOrConfig;
   const provider = (cfg.provider || "gemini").toLowerCase();
+  const gen: GenOpts = { temperature: cfg.temperature, maxTokens: cfg.maxTokens };
 
   if (provider === "openai" || provider === "anthropic") {
     try {
       if (provider === "openai") {
         const key = cfg.openaiKey?.trim();
         if (!key) throw new Error("Chave OpenAI não configurada na sua empresa.");
-        return await openAiChat(key, cfg.model || "gpt-4o-mini", messages);
+        return await openAiChat(key, cfg.model || "gpt-4o-mini", messages, gen);
       }
       const key = cfg.anthropicKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
       if (!key) {
         throw new Error("Chave Anthropic (Claude) não configurada: defina ANTHROPIC_API_KEY no ambiente ou na sua empresa.");
       }
-      return await anthropicChat(key, resolveClaudeModel(cfg.model), messages);
+      return await anthropicChat(key, resolveClaudeModel(cfg.model), messages, gen);
     } catch (error: any) {
       if (!cfg.fallbackToGemini) throw error;
       console.warn(`[ai] ${provider} falhou; respondendo com Gemini:`, error?.message);
-      return lovableAiChat(messages, { provider: "gemini", model: "google/gemini-2.5-flash", geminiKey: cfg.geminiKey });
+      return lovableAiChat(messages, { provider: "gemini", model: "google/gemini-2.5-flash", geminiKey: cfg.geminiKey, ...gen });
     }
   }
   // default: Gemini (Google). Prioriza SUA chave direta; só cai no gateway do Lovable se não houver.
   const googleKey = cfg.geminiKey?.trim() || process.env.GEMINI_API_KEY?.trim();
   if (googleKey) {
     const gModel = (cfg.model || "gemini-2.5-flash-lite").replace(/^google\//, "");
-    return geminiChat(googleKey, gModel, messages);
+    return geminiChat(googleKey, gModel, messages, gen);
   }
 
   // fallback: Gemini via Lovable Gateway
@@ -68,7 +78,7 @@ export async function lovableAiChat(
   const res = await fetch(GATEWAY, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages }),
+    body: JSON.stringify({ model, messages, ...(gen.temperature != null ? { temperature: gen.temperature } : {}) }),
   });
   if (!res.ok) {
     const t = await res.text();
@@ -178,11 +188,16 @@ Se NÃO for comprovante bancário de pagamento, retorne {"e_comprovante": false,
   return null;
 }
 
-async function openAiChat(key: string, model: string, messages: ChatMsg[]): Promise<string> {
+async function openAiChat(key: string, model: string, messages: ChatMsg[], gen: GenOpts = {}): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages }),
+    body: JSON.stringify({
+      model,
+      messages,
+      ...(gen.temperature != null ? { temperature: gen.temperature } : {}),
+      ...(gen.maxTokens ? { max_tokens: gen.maxTokens } : {}),
+    }),
   });
   if (!res.ok) {
     const t = await res.text();
@@ -200,7 +215,7 @@ function resolveClaudeModel(model?: string): string {
   return model && CLAUDE_MODELS.has(model) ? model : CLAUDE_DEFAULT_MODEL;
 }
 
-async function anthropicChat(key: string, model: string, messages: ChatMsg[]): Promise<string> {
+async function anthropicChat(key: string, model: string, messages: ChatMsg[], gen: GenOpts = {}): Promise<string> {
   const client = new Anthropic({ apiKey: key, timeout: 90_000 });
   const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
   const conv: Anthropic.Beta.BetaMessageParam[] = messages
@@ -213,7 +228,8 @@ async function anthropicChat(key: string, model: string, messages: ChatMsg[]): P
   try {
     const response = await client.beta.messages.create({
       model,
-      max_tokens: 16000,
+      max_tokens: gen.maxTokens ?? 16000,
+      ...(gen.temperature != null ? { temperature: gen.temperature } : {}),
       ...(system ? { system } : {}),
       messages: conv,
       // Opus 5: se o classificador de segurança recusar, a própria API refaz no modelo de fallback recomendado.
@@ -267,7 +283,7 @@ function geminiText(data: any): string {
     .trim();
 }
 
-async function geminiChat(key: string, model: string, messages: ChatMsg[]): Promise<string> {
+async function geminiChat(key: string, model: string, messages: ChatMsg[], gen: GenOpts = {}): Promise<string> {
   // Google Generative Language API (Gemini) — chamada direta com a chave do usuário.
   const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
   const contents = messages
@@ -279,6 +295,7 @@ async function geminiChat(key: string, model: string, messages: ChatMsg[]): Prom
   const body = {
     ...(system ? { system_instruction: { parts: [{ text: system }] } } : {}),
     contents,
+    ...(gen.temperature != null ? { generationConfig: { temperature: gen.temperature } } : {}),
   };
 
   // Tenta o modelo escolhido 2x; se seguir sobrecarregado, tenta o flash-lite

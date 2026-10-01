@@ -140,7 +140,8 @@ Gere o resumo executivo em tópicos agora:`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      "google/gemini-2.5-flash-lite",
+      // Resumo para a equipe: fiel à conversa, sem floreio.
+      { provider: "gemini", model: "google/gemini-2.5-flash-lite", temperature: 0.3 },
     );
     aiSummary = aiSummary.trim();
   } catch (e: any) {

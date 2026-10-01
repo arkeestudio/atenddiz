@@ -107,7 +107,8 @@ ${conversa}`;
       { role: "system", content: system },
       { role: "user", content: user },
     ],
-    "google/gemini-2.5-flash-lite",
+    // Extração de dados: quanto menos invenção, melhor. Nada de "deduzir" idade ou nome.
+    { provider: "gemini", model: "google/gemini-2.5-flash-lite", temperature: 0.2 },
   );
   const parsed = parseJsonLoose(raw);
   if (!parsed) throw new Error("A IA não devolveu a ficha em formato válido.");
