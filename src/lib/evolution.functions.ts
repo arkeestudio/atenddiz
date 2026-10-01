@@ -59,7 +59,7 @@ export const connectWhatsapp = createServerFn({ method: "POST" })
       .maybeSingle();
     const webhookToken = existing?.webhook_token || crypto.randomUUID();
 
-    const conn = await provider.connect(companyId, existing?.instance_name, data.force);
+    const conn = await provider.connect(companyId, existing?.instance_name, data.force, webhookToken);
 
     await supabase
       .from("whatsapp_instances")

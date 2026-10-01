@@ -33,7 +33,16 @@ export interface IWhatsAppProvider {
     companyId: string,
     currentInstanceOrSessionId?: string | null,
     force?: boolean,
+    /** Vai na URL do webhook (?t=): é o que prova que a chamada veio do nosso servidor de WhatsApp. */
+    webhookToken?: string | null,
   ): Promise<ConnectResult>;
+
+  /** Registra de novo a URL do webhook (com o token) numa sessão já existente. Devolve a URL usada. */
+  setWebhook?(
+    companyId: string,
+    instanceOrSessionId: string,
+    webhookToken?: string | null,
+  ): Promise<string>;
 
   getStatus(
     companyId: string,

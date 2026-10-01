@@ -32,10 +32,18 @@ async function buildWebhookUrl(token?: string | null) {
 export class EvolutionAdapter implements IWhatsAppProvider {
   readonly providerName = "evolution";
 
+  async setWebhook(_companyId: string, instanceOrSessionId: string, webhookToken?: string | null): Promise<string> {
+    const { evoSetWebhook } = await import("../evolution.server");
+    const webhookUrl = await buildWebhookUrl(webhookToken);
+    if (webhookUrl) await evoSetWebhook(instanceOrSessionId, webhookUrl);
+    return webhookUrl;
+  }
+
   async connect(
     companyId: string,
     currentInstanceOrSessionId?: string | null,
     force?: boolean,
+    webhookToken?: string | null,
   ): Promise<ConnectResult> {
     const {
       evoCreateInstance,
@@ -47,7 +55,7 @@ export class EvolutionAdapter implements IWhatsAppProvider {
     } = await import("../evolution.server");
 
     let instanceName = currentInstanceOrSessionId || deriveInstanceName(companyId);
-    const webhookUrl = await buildWebhookUrl();
+    const webhookUrl = await buildWebhookUrl(webhookToken);
 
     if (currentInstanceOrSessionId && !force) {
       if ((await evoCurrentState(currentInstanceOrSessionId)) === "open") {

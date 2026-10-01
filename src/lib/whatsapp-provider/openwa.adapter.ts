@@ -39,9 +39,10 @@ export class OpenWAAdapter implements IWhatsAppProvider {
     companyId: string,
     currentInstanceOrSessionId?: string | null,
     force?: boolean,
+    webhookToken?: string | null,
   ): Promise<ConnectResult> {
     const sessionName = currentInstanceOrSessionId || deriveSessionName(companyId);
-    const webhookUrl = await buildWebhookUrl();
+    const webhookUrl = await buildWebhookUrl(webhookToken);
 
     if (currentInstanceOrSessionId && force) {
       await openwaDeleteSession(currentInstanceOrSessionId);
@@ -70,6 +71,12 @@ export class OpenWAAdapter implements IWhatsAppProvider {
       state: session?.status || "INITIALIZING",
       webhookUrl,
     };
+  }
+
+  async setWebhook(_companyId: string, instanceOrSessionId: string, webhookToken?: string | null): Promise<string> {
+    const webhookUrl = await buildWebhookUrl(webhookToken);
+    if (webhookUrl) await openwaSetWebhook(instanceOrSessionId, webhookUrl);
+    return webhookUrl;
   }
 
   async getStatus(

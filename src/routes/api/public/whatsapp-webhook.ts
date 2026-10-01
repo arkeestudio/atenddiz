@@ -134,6 +134,12 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           if (suppliedToken && suppliedToken !== (inst as any).webhook_token) {
             return new Response("invalid webhook", { status: 401 });
           }
+          // Sessão registrada antes de o token entrar na URL (até out/2026 o connect não o
+          // passava). Ainda aceita, mas corrige o registro para as próximas chamadas virem
+          // assinadas — o passo seguinte é recusar chamada sem token.
+          if (!suppliedToken) {
+            await reregistrarWebhookComToken(instanceName, (inst as any).webhook_token);
+          }
           const companyId = (inst as any).company_id as string;
           const userId = (inst as any).user_id as string;
 
@@ -599,6 +605,23 @@ function extractPhoneNumber(data: any, key: any): string | null {
     ) ??
     pick((c) => c.includes("@"))
   );
+}
+
+// Uma vez por instância por processo: a chamada ao servidor de WhatsApp é barata, mas não
+// precisa repetir a cada mensagem enquanto a sessão antiga ainda manda sem token.
+const webhooksCorrigidos = new Set<string>();
+async function reregistrarWebhookComToken(instanceName: string, token: string | null | undefined) {
+  if (!token || webhooksCorrigidos.has(instanceName)) return;
+  webhooksCorrigidos.add(instanceName);
+  try {
+    const { getWhatsAppProvider } = await import("@/lib/whatsapp-provider");
+    const provider = getWhatsAppProvider();
+    if (!provider.setWebhook) return;
+    const url = await provider.setWebhook("", instanceName, token);
+    console.log("[webhook] URL re-registrada com token", instanceName, url ? "ok" : "sem origem");
+  } catch (e: any) {
+    console.warn("[webhook] não foi possível re-registrar a URL com token", instanceName, e?.message);
+  }
 }
 
 // Tempo sem atividade humana após o qual uma conversa pausada volta para a IA.
