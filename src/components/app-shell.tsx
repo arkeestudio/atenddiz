@@ -1,9 +1,14 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   LayoutDashboard, Bot, KanbanSquare, Table2, LogOut, Smartphone, Shield,
   Inbox, Users, BarChart3, Settings, Contact, Zap, MessageCircle, Megaphone, Webhook, Wallet,
+  ChevronsLeft, ChevronsRight,
 } from "lucide-react";
+
+// Barra lateral recolhida (só ícones) libera ~190px para a área de trabalho — faz diferença
+// em notebook, onde Conversas e o Kanban disputam cada pixel. A escolha fica no navegador.
+const CHAVE_BARRA = "ui:barra-recolhida";
 import { supabase } from "@/integrations/supabase/client";
 import { brand, supportWhatsappUrl, supportWhatsappDisplay } from "@/config/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -64,6 +69,19 @@ export function AppShell({
   const loc = useLocation();
   const navigate = useNavigate();
   const aguardandoHumano = useAguardandoHumano(company?.id);
+
+  // Começa aberta no servidor e lê a preferência no cliente: sem acesso ao localStorage
+  // durante o SSR, e um piscar de 190px na primeira pintura é melhor que hidratação divergente.
+  const [recolhida, setRecolhida] = useState(false);
+  useEffect(() => {
+    try { setRecolhida(localStorage.getItem(CHAVE_BARRA) === "1"); } catch {}
+  }, []);
+  function alternarBarra() {
+    setRecolhida((v) => {
+      try { localStorage.setItem(CHAVE_BARRA, v ? "0" : "1"); } catch {}
+      return !v;
+    });
+  }
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -135,8 +153,11 @@ export function AppShell({
           roleLabel={roleLabel}
           signOut={signOut}
           aguardandoHumano={aguardandoHumano}
+          recolhida={recolhida}
+          alternar={alternarBarra}
         />
-        <main className="flex-1 px-4 pt-4 pb-28 md:p-8 md:pb-8 max-w-7xl w-full mx-auto">
+        {/* Com a barra recolhida o conteúdo pode ir mais largo: é para isso que ela recolhe. */}
+        <main className={`flex-1 px-4 pt-4 pb-28 md:p-8 md:pb-8 w-full mx-auto min-w-0 ${recolhida ? "max-w-[1600px]" : "max-w-7xl"}`}>
           <div className="hidden md:flex items-center justify-between gap-3 mb-6">
             <WhatsappStatusPill />
             <div className="flex items-center gap-2 ml-auto">
@@ -160,80 +181,145 @@ export function AppShell({
 }
 
 function Sidebar({
-  loc, company, isSuperAdmin, isAdmin, primary, userName, email, roleLabel, signOut, aguardandoHumano,
+  loc, company, isSuperAdmin, isAdmin, primary, userName, email, roleLabel, signOut, aguardandoHumano, recolhida, alternar,
 }: any) {
   return (
-    <aside className="hidden md:flex w-[260px] min-h-screen border-r border-[color:var(--hairline)] bg-[color:var(--sidebar-bg)] flex-col">
-      <div className="px-5 py-5 flex items-center gap-3 border-b border-[color:var(--hairline)]">
+    <aside
+      className={`hidden md:flex relative min-h-screen border-r border-[color:var(--hairline)] bg-[color:var(--sidebar-bg)] flex-col shrink-0 transition-[width] duration-200 ${
+        recolhida ? "w-[72px]" : "w-[260px]"
+      }`}
+    >
+      {/* Botão na borda: visível sem ocupar espaço do menu. */}
+      <button
+        type="button"
+        onClick={alternar}
+        title={recolhida ? "Expandir menu" : "Recolher menu"}
+        aria-label={recolhida ? "Expandir menu" : "Recolher menu"}
+        className="absolute -right-3 top-7 z-10 size-6 grid place-items-center rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel)] text-muted-foreground shadow-sm hover:text-foreground hover:bg-[color:var(--panel-2)]"
+      >
+        {recolhida ? <ChevronsRight className="size-3.5" /> : <ChevronsLeft className="size-3.5" />}
+      </button>
+
+      <div className={`py-5 flex items-center gap-3 border-b border-[color:var(--hairline)] ${recolhida ? "px-0 justify-center" : "px-5"}`}>
         {company?.logo_url ? (
-          <img src={company.logo_url} alt={company.nome} className="size-10 rounded-xl object-cover ring-1 ring-[color:var(--hairline)]" />
+          <img src={company.logo_url} alt={company.nome} title={company?.nome} className="size-10 rounded-xl object-cover ring-1 ring-[color:var(--hairline)] shrink-0" />
         ) : (
           <div
-            className="size-10 rounded-xl grid place-items-center text-primary-foreground shadow-md ring-1 ring-[color:var(--hairline)]"
+            title={company?.nome}
+            className="size-10 rounded-xl grid place-items-center text-primary-foreground shadow-md ring-1 ring-[color:var(--hairline)] shrink-0"
             style={{ background: `linear-gradient(135deg, ${primary}, var(--brand-strong))` }}
           >
             <Zap className="size-5" strokeWidth={2.5} />
           </div>
         )}
-        <div className="min-w-0">
-          <div className="font-display font-extrabold tracking-tight truncate text-[16px]">{brand.name}</div>
-          <div className="text-[11.5px] text-muted-foreground truncate -mt-0.5">{company?.nome || "Sua empresa"}</div>
-        </div>
+        {!recolhida && (
+          <div className="min-w-0">
+            <div className="font-display font-extrabold tracking-tight truncate text-[16px]">{brand.name}</div>
+            <div className="text-[11.5px] text-muted-foreground truncate -mt-0.5">{company?.nome || "Sua empresa"}</div>
+          </div>
+        )}
       </div>
 
-      <nav className="p-3 flex-1 overflow-y-auto space-y-5">
-        {sections.map((sec) => (
+      <nav className={`flex-1 overflow-y-auto overflow-x-hidden ${recolhida ? "p-2 space-y-3" : "p-3 space-y-5"}`}>
+        {sections.map((sec, idx) => (
           <div key={sec.label}>
-            <div className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
-              {sec.label}
-            </div>
+            {recolhida ? (
+              idx > 0 && <div className="mx-2 mb-2 border-t border-[color:var(--hairline)]" aria-hidden />
+            ) : (
+              <div className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+                {sec.label}
+              </div>
+            )}
             <div className="flex flex-col gap-1">
               {sec.items.filter((i) => !i.adminOnly || isAdmin).map((item) => (
                 <NavLink key={item.to} item={item} active={loc.pathname.startsWith(item.to)} primary={primary}
-                  count={item.badge ? aguardandoHumano : 0} />
+                  count={item.badge ? aguardandoHumano : 0} compacto={recolhida} />
               ))}
             </div>
           </div>
         ))}
       </nav>
 
-      <div className="p-3 border-t border-[color:var(--hairline)]">
+      <div className={`border-t border-[color:var(--hairline)] ${recolhida ? "p-2" : "p-3"}`}>
         {isSuperAdmin && (
-          <Link to="/master/painel" className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-destructive hover:bg-[color:var(--panel-2)]">
-            <Shield className="size-4" /> Painel Master
+          <Link
+            to="/master/painel"
+            title="Painel Master"
+            className={`mb-2 flex items-center gap-2 py-2 rounded-lg text-[13px] font-medium text-destructive hover:bg-[color:var(--panel-2)] ${recolhida ? "justify-center px-0" : "px-3"}`}
+          >
+            <Shield className="size-4" /> {!recolhida && "Painel Master"}
           </Link>
         )}
-        <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[color:var(--panel-2)] border border-[color:var(--hairline)]">
-          <div
-            className="size-9 rounded-full grid place-items-center text-[13px] font-bold text-[color:var(--brand-text)] ring-1 ring-[color:var(--hairline-strong)] shrink-0"
-            style={{ background: "var(--brand-soft)" }}
-          >
-            {(userName || "U").slice(0, 1).toUpperCase()}
+        {recolhida ? (
+          <div className="flex flex-col items-center gap-2">
+            <div
+              title={`${userName} · ${roleLabel}`}
+              className="size-9 rounded-full grid place-items-center text-[13px] font-bold text-[color:var(--brand-text)] ring-1 ring-[color:var(--hairline-strong)]"
+              style={{ background: "var(--brand-soft)" }}
+            >
+              {(userName || "U").slice(0, 1).toUpperCase()}
+            </div>
+            <button onClick={signOut} title="Sair" className="size-9 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]">
+              <LogOut className="size-4" />
+            </button>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold truncate">{userName}</div>
-            <div className="text-[11px] text-muted-foreground truncate" title={email || ""}>{roleLabel}</div>
-          </div>
-          <button onClick={signOut} title="Sair" className="size-8 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel)]">
-            <LogOut className="size-4" />
-          </button>
-        </div>
-        <a
-          href={supportWhatsappUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 flex items-center gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-        >
-          <MessageCircle className="size-3" />
-          <span>Suporte: {supportWhatsappDisplay}</span>
-        </a>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[color:var(--panel-2)] border border-[color:var(--hairline)]">
+              <div
+                className="size-9 rounded-full grid place-items-center text-[13px] font-bold text-[color:var(--brand-text)] ring-1 ring-[color:var(--hairline-strong)] shrink-0"
+                style={{ background: "var(--brand-soft)" }}
+              >
+                {(userName || "U").slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-semibold truncate">{userName}</div>
+                <div className="text-[11px] text-muted-foreground truncate" title={email || ""}>{roleLabel}</div>
+              </div>
+              <button onClick={signOut} title="Sair" className="size-8 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel)]">
+                <LogOut className="size-4" />
+              </button>
+            </div>
+            <a
+              href={supportWhatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <MessageCircle className="size-3" />
+              <span>Suporte: {supportWhatsappDisplay}</span>
+            </a>
+          </>
+        )}
       </div>
     </aside>
   );
 }
 
-function NavLink({ item, active, primary, count = 0 }: { item: NavItem; active: boolean; primary: string; count?: number }) {
+function NavLink({ item, active, primary, count = 0, compacto = false }: { item: NavItem; active: boolean; primary: string; count?: number; compacto?: boolean }) {
   const Icon = item.icon;
+  // Recolhida: só o ícone, centralizado, com o nome no título (tooltip do navegador) e o
+  // contador de "aguardando humano" como bolinha no canto — a informação não some, encolhe.
+  if (compacto) {
+    return (
+      <Link
+        to={item.to}
+        title={count > 0 ? `${item.label} · ${count} aguardando atendimento humano` : item.label}
+        aria-label={item.label}
+        className={`relative grid place-items-center size-12 mx-auto rounded-lg transition-all ${
+          active ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]"
+        }`}
+        style={active ? { background: "var(--brand-soft)", boxShadow: `inset 0 0 0 1px var(--brand-soft-strong)` } : undefined}
+      >
+        <Icon className="size-[20px]" style={active ? { color: primary } : undefined} />
+        {count > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full grid place-items-center text-[10px] font-bold bg-amber-500 text-black animate-pulse">
+            {count}
+          </span>
+        )}
+      </Link>
+    );
+  }
   return (
     <Link
       to={item.to}
