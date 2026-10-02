@@ -809,47 +809,47 @@ const server = http.createServer(async (req, res) => {
         // desliga os dois: o open-wa não desliga sozinho, e um "gravando" esquecido fica
         // pendurado na tela do cliente.
         //
-        // A biblioteca faz isso pelo window.Store, que some quando o WhatsApp Web atualiza
-        // (mesma causa do sendSeen e do sendText). Tenta a biblioteca; se falhar, vai pelos
-        // módulos do WhatsApp Web, e desta vez deixa registro no log em vez de engolir.
+        // Módulos do WhatsApp Web primeiro: o diagnóstico da VM confirmou que
+        // WAWebPresenceChatAction existe e que o chat é resolvido (inclusive @lid). A
+        // biblioteca fica como reserva — ela às vezes "diz que fez" sem fazer, e se viesse
+        // primeiro a reserva nunca rodaria.
         let ok = false;
-        try {
-          if (modo === 'composing') ok = !!(await s.client.simulateTyping(chatId, true));
-          else if (modo === 'recording') ok = !!(await s.client.simulateRecording(chatId, true));
-          else {
-            await s.client.simulateTyping(chatId, false);
-            await s.client.simulateRecording(chatId, false).catch(() => {});
-            ok = true;
+        const page = s.client._page || s.client.page;
+        if (page) {
+          try {
+            await garantirHelpers(page);
+            const r = await page.evaluate(async (targetChatId, modoPresenca) => {
+              const h = window.__atenddiz;
+              const { chat, motivo } = await h.resolverChat(targetChatId);
+              if (!chat) return motivo;
+              const { mod, origem } = h.acharModulo(
+                ['WAWebPresenceChatAction', 'WAWebChatPresence', 'WAWebChatPresenceActions'],
+                (m) => typeof m.markComposing === 'function' && typeof m.markRecording === 'function',
+              );
+              if (!mod) return 'sem-modulo';
+              if (modoPresenca === 'composing') await mod.markComposing(chat);
+              else if (modoPresenca === 'recording') await mod.markRecording(chat);
+              else if (typeof mod.markPaused === 'function') await mod.markPaused(chat);
+              return 'ok:' + origem;
+            }, chatId, modo);
+            ok = String(r).startsWith('ok');
+            if (!ok) console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
+          } catch (e) {
+            console.warn(`[OpenWA presence] módulos falharam (${modo}): ${e.message}`);
           }
-        } catch (e) {
-          console.warn(`[OpenWA presence] biblioteca falhou (${modo}): ${e.message}`);
         }
 
         if (!ok) {
-          const page = s.client._page || s.client.page;
-          if (page) {
-            try {
-              await garantirHelpers(page);
-              const r = await page.evaluate(async (targetChatId, modoPresenca) => {
-                const h = window.__atenddiz;
-                const { chat, motivo } = await h.resolverChat(targetChatId);
-                if (!chat) return motivo;
-                // Módulo de presença: quem exporta markComposing/markRecording/markPaused.
-                const { mod, origem } = h.acharModulo(
-                  ['WAWebPresenceChatAction', 'WAWebChatPresence', 'WAWebChatPresenceActions'],
-                  (m) => typeof m.markComposing === 'function' && typeof m.markRecording === 'function',
-                );
-                if (!mod) return 'sem-modulo';
-                if (modoPresenca === 'composing') await mod.markComposing(chat);
-                else if (modoPresenca === 'recording') await mod.markRecording(chat);
-                else if (typeof mod.markPaused === 'function') await mod.markPaused(chat);
-                return 'ok:' + origem;
-              }, chatId, modo);
-              ok = String(r).startsWith('ok');
-              if (!ok) console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
-            } catch (e) {
-              console.warn(`[OpenWA presence] módulos falharam (${modo}): ${e.message}`);
+          try {
+            if (modo === 'composing') ok = !!(await s.client.simulateTyping(chatId, true));
+            else if (modo === 'recording') ok = !!(await s.client.simulateRecording(chatId, true));
+            else {
+              await s.client.simulateTyping(chatId, false);
+              await s.client.simulateRecording(chatId, false).catch(() => {});
+              ok = true;
             }
+          } catch (e) {
+            console.warn(`[OpenWA presence] biblioteca também falhou (${modo}): ${e.message}`);
           }
         }
         return json({ ok });
@@ -864,14 +864,12 @@ const server = http.createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const s = sessions.get(sessionId);
       if (s && s.client) {
-        try {
-          let chatId = body.chatId || '';
-          if (!chatId.includes('@')) chatId = `${chatId.replace(/\D/g, '')}@c.us`;
-          await s.client.sendSeen(chatId);
-        } catch (e) {
-          // A biblioteca marca o "visto" pelo window.Store, que some quando o WhatsApp Web
-          // atualiza (mesma causa do erro no envio de texto). Tenta pelos módulos, que são
-          // estáveis. É só o tique azul: falhar aqui não atrapalha o atendimento.
+        let chatId = body.chatId || '';
+        if (!chatId.includes('@')) chatId = `${chatId.replace(/\D/g, '')}@c.us`;
+        {
+          // Módulos primeiro (WAWebUpdateUnreadChatAction.sendSeen, confirmado no diagnóstico
+          // da VM); a biblioteca, que quebra por dentro com "reading 'get'", fica de reserva.
+          // É só o tique azul: falhar aqui não atrapalha o atendimento.
           const page = s.client._page || s.client.page;
           let ok = false;
           if (page) {
@@ -896,7 +894,9 @@ const server = http.createServer(async (req, res) => {
               console.warn(`[OpenWA sendSeen] módulos falharam: ${err.message}`);
             }
           }
-          if (!ok && !page) console.warn('[OpenWA sendSeen]', e.message);
+          if (!ok) {
+            try { await s.client.sendSeen(chatId); } catch (err) { console.warn(`[OpenWA sendSeen] biblioteca também falhou: ${err.message}`); }
+          }
         }
       }
       return json({ ok: true });
