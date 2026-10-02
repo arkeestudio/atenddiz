@@ -726,23 +726,86 @@ const server = http.createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       const s = sessions.get(sessionId);
       if (s && s.client) {
+        let chatId = body.chatId || '';
+        if (!chatId.includes('@')) chatId = `${chatId.replace(/\D/g, '')}@c.us`;
+        const modo = body.presence === 'composing' || body.presence === 'recording' ? body.presence : 'paused';
+
+        // 'composing' = "digitando…", 'recording' = "gravando áudio…". Qualquer outro valor
+        // desliga os dois: o open-wa não desliga sozinho, e um "gravando" esquecido fica
+        // pendurado na tela do cliente.
+        //
+        // A biblioteca faz isso pelo window.Store, que some quando o WhatsApp Web atualiza
+        // (mesma causa do sendSeen e do sendText). Tenta a biblioteca; se falhar, vai pelos
+        // módulos do WhatsApp Web, e desta vez deixa registro no log em vez de engolir.
+        let ok = false;
         try {
-          let chatId = body.chatId || '';
-          if (!chatId.includes('@')) chatId = `${chatId.replace(/\D/g, '')}@c.us`;
-          // 'composing' = "digitando…", 'recording' = "gravando áudio…". Qualquer outro valor
-          // desliga os dois: o open-wa não desliga sozinho, e um "gravando" esquecido fica
-          // pendurado na tela do cliente.
-          if (body.presence === 'composing') {
-            await s.client.simulateTyping(chatId, true);
-          } else if (body.presence === 'recording') {
-            await s.client.simulateRecording(chatId, true);
-          } else {
+          if (modo === 'composing') ok = !!(await s.client.simulateTyping(chatId, true));
+          else if (modo === 'recording') ok = !!(await s.client.simulateRecording(chatId, true));
+          else {
             await s.client.simulateTyping(chatId, false);
             await s.client.simulateRecording(chatId, false).catch(() => {});
+            ok = true;
           }
-        } catch {}
+        } catch (e) {
+          console.warn(`[OpenWA presence] biblioteca falhou (${modo}): ${e.message}`);
+        }
+
+        if (!ok) {
+          const page = s.client._page || s.client.page;
+          if (page) {
+            try {
+              const r = await page.evaluate(async (targetChatId, modoPresenca) => {
+                const req = window.require;
+                const chats = (() => {
+                  const doStore = window.Store && window.Store.Chat;
+                  if (doStore && typeof doStore.get === 'function') return doStore;
+                  for (const nome of ['WAWebChatCollection', 'WAWebChatStore']) {
+                    try {
+                      const mod = req(nome);
+                      const col = mod?.ChatCollection || mod?.Chat;
+                      if (col && typeof col.get === 'function') return col;
+                    } catch (err) {}
+                  }
+                  return null;
+                })();
+                const chat = chats && chats.get(targetChatId);
+                if (!chat) return 'sem-chat';
+
+                // Módulo de presença: pelo nome e, se não achar, varrendo o mapa de módulos
+                // atrás de quem exporta markComposing/markRecording/markPaused.
+                let mod = null;
+                for (const nome of ['WAWebPresenceChatAction', 'WAWebChatPresence', 'WAWebChatPresenceActions']) {
+                  try {
+                    const m = req(nome);
+                    if (m && typeof m.markComposing === 'function') { mod = m; break; }
+                  } catch (err) {}
+                }
+                if (!mod) {
+                  try {
+                    const mapa = req('__debug')?.modulesMap || {};
+                    for (const k of Object.keys(mapa)) {
+                      let m = null;
+                      try { m = mapa[k]?.exports; } catch (err) { continue; }
+                      if (m && typeof m.markComposing === 'function' && typeof m.markRecording === 'function') { mod = m; break; }
+                    }
+                  } catch (err) {}
+                }
+                if (!mod) return 'sem-modulo';
+                if (modoPresenca === 'composing') await mod.markComposing(chat);
+                else if (modoPresenca === 'recording') await mod.markRecording(chat);
+                else if (typeof mod.markPaused === 'function') await mod.markPaused(chat);
+                return 'ok';
+              }, chatId, modo);
+              if (r !== 'ok') console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
+              ok = r === 'ok';
+            } catch (e) {
+              console.warn(`[OpenWA presence] módulos falharam (${modo}): ${e.message}`);
+            }
+          }
+        }
+        return json({ ok });
       }
-      return json({ ok: true });
+      return json({ ok: false, error: 'Session not connected' });
     }
 
     // POST /api/sessions/:sessionId/chat/seen (Marca mensagens como lidas com tick azul)
