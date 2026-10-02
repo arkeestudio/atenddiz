@@ -52,7 +52,7 @@ function PlanilhaPage() {
   const [editando, setEditando] = useState<{ cardId: string; campo: string } | null>(null);
   const [rascunho, setRascunho] = useState("");
   const [salvando, setSalvando] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const salvarFichaFn = useServerFn(salvarFicha);
 
   async function carregar(cid: string) {
@@ -155,17 +155,12 @@ function PlanilhaPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <header className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            Planilha de Leads
-            <HelpTip text="Cada linha é um lead e cada coluna é um campo da ficha. A IA preenche o que descobre na conversa; você clica na célula para corrigir ou completar. As colunas saem dos campos definidos em Agente IA." />
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Tudo o que a IA já apurou, numa tabela só — clique na célula para editar
-          </p>
-        </div>
+    <div className="space-y-3">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-[22px] font-bold tracking-tight flex items-center gap-2 leading-none">
+          Planilha de Leads
+          <HelpTip text="Tudo o que a IA já apurou, numa tabela só. Cada linha é um lead e cada coluna é um campo da ficha; clique na célula para corrigir ou completar. As colunas saem dos campos definidos em Agente IA." />
+        </h1>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="size-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -196,7 +191,7 @@ function PlanilhaPage() {
       </header>
 
       <div className="border border-[color:var(--hairline)] rounded-2xl overflow-hidden bg-[color:var(--panel)]">
-        <div className="overflow-auto max-h-[calc(100vh-230px)]">
+        <div className="overflow-auto max-h-[calc(100vh-190px)]">
           <table className="w-full text-[13px] border-collapse">
             <thead className="sticky top-0 z-20 bg-[color:var(--panel-2)]">
               <tr>
@@ -269,22 +264,31 @@ function PlanilhaPage() {
                         <td
                           key={campo.id}
                           onClick={() => !edit && abrirEdicao(c, campo.id)}
-                          className="px-3 py-2 align-top cursor-text hover:bg-[color:var(--brand-soft)]/40"
+                          className="px-3 py-2 align-middle cursor-text hover:bg-[color:var(--brand-soft)]/40 max-w-[280px]"
                         >
                           {edit ? (
-                            <input
+                            // Textarea: campo longo (ex.: "Dúvidas e preocupações") precisa caber
+                            // enquanto se edita. Enter salva; Shift+Enter quebra linha.
+                            <textarea
                               ref={inputRef}
                               value={rascunho}
+                              rows={rascunho.length > 60 ? 4 : 1}
                               onChange={(e) => setRascunho(e.target.value)}
                               onBlur={() => void confirmar(c, campo.id)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") { e.preventDefault(); void confirmar(c, campo.id); }
+                                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void confirmar(c, campo.id); }
                                 if (e.key === "Escape") setEditando(null);
                               }}
-                              className="w-full bg-transparent outline-none border-b border-[color:var(--brand)] text-[13px]"
+                              className="w-full min-w-[220px] bg-[color:var(--panel)] outline-none border border-[color:var(--brand)] rounded-md px-2 py-1 text-[13px] leading-snug resize-none"
                             />
                           ) : (
-                            <span className={valor ? "" : "text-muted-foreground/40"}>
+                            // Duas linhas no máximo: uma célula longa não pode esticar a linha
+                            // inteira e empurrar todo mundo. O texto completo fica no tooltip e
+                            // aparece inteiro ao clicar para editar.
+                            <span
+                              title={valor || undefined}
+                              className={`block line-clamp-2 break-words leading-snug ${valor ? "" : "text-muted-foreground/40"}`}
+                            >
                               {valor || "—"}
                               {salvando === `${c.id}:${campo.id}` && <Loader2 className="size-3 animate-spin inline ml-1.5" />}
                             </span>
