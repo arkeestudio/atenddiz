@@ -250,15 +250,12 @@ function KanbanPage() {
   const activeCard = activeId ? cards.find((c) => c.id === activeId) : null;
 
   return (
-    <div className="space-y-5">
-      <header className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            CRM Kanban
-            <HelpTip text="Funil visual de vendas. Arraste cards entre etapas (Novo lead → Qualificado → Proposta → Fechado) para acompanhar a evolução de cada contato." />
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Arraste cards entre etapas. A IA também move automaticamente.</p>
-        </div>
+    <div className="space-y-3">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="flex items-center gap-2 text-[22px] font-bold tracking-tight leading-none">
+          CRM Kanban
+          <HelpTip text="Funil visual de vendas. Arraste cards entre etapas para acompanhar a evolução de cada contato — a IA também move automaticamente." />
+        </h1>
         <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
@@ -319,11 +316,15 @@ function KanbanPage() {
       </div>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex gap-4 pb-4 overflow-x-auto min-h-[580px] select-none scrollbar-thin">
+        {/* O quadro tem a altura da tela e rola para o LADO; cada coluna rola para BAIXO por
+            dentro. Antes o quadro crescia com a coluna mais comprida e a barra lateral ficava
+            no fim da página — em tela pequena, inalcançável. No celular, cada coluna ocupa a
+            tela e "encaixa" ao deslizar (snap). */}
+        <div className="flex gap-3 md:gap-4 pb-2 overflow-x-auto overflow-y-hidden h-[calc(100dvh-320px)] md:h-[calc(100vh-180px)] min-h-[380px] select-none scrollbar-thin snap-x snap-mandatory md:snap-none">
           {stages.map((col) => {
             const stageCards = byStage[col.id] ?? [];
             return (
-              <div key={col.id} className="w-[310px] min-w-[280px] shrink-0">
+              <div key={col.id} className="w-[86vw] sm:w-[310px] shrink-0 h-full snap-start">
                 <Column stage={col} cards={stageCards}
                   onEdit={() => setEditingStage(col)} onDelete={() => deleteStage(col.id)}>
                   {stageCards.map((c) => (
@@ -403,7 +404,7 @@ function Column({ stage, cards, children, onEdit, onDelete }:
 
   return (
     <div ref={setColRef}
-      className={`rounded-2xl border bg-[var(--panel)] p-4 min-h-[520px] flex flex-col transition-all duration-200 ${
+      className={`rounded-2xl border bg-[var(--panel)] p-3 h-full min-h-0 flex flex-col transition-all duration-200 ${
         isOver ? "border-[var(--brand)] ring-2 ring-[var(--brand)]/20 bg-[var(--brand)]/[0.02]" : "border-[var(--border)] shadow-sm"
       }`}>
       <div ref={setHandleRef} {...attributes} {...listeners}
@@ -430,7 +431,8 @@ function Column({ stage, cards, children, onEdit, onDelete }:
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="space-y-3 flex-1 flex flex-col">{children}</div>
+      {/* min-h-0 + overflow-y-auto: é aqui que a coluna rola, não a página. */}
+      <div className="space-y-3 flex-1 flex flex-col min-h-0 overflow-y-auto overscroll-contain -mr-1.5 pr-1.5 scrollbar-thin">{children}</div>
     </div>
   );
 }
