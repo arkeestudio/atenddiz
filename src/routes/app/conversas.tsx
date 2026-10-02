@@ -853,12 +853,13 @@ function ConversasPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <header className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="font-display text-[26px] font-extrabold tracking-tight flex items-center gap-2">Conversas <HelpTip text="Caixa de entrada unificada do WhatsApp. Filtre por status, assuma um atendimento manualmente, envie CSAT e responda em nome do agente." /></h1>
-          <p className="text-sm text-muted-foreground">Inbox em tempo real do WhatsApp</p>
-        </div>
+    <div className="space-y-3">
+      {/* Uma linha só: título e filtros. O subtítulo foi para a dica do ⓘ — cada pixel de
+          altura aqui é uma mensagem a menos na conversa. */}
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="font-display text-[22px] font-extrabold tracking-tight flex items-center gap-2 leading-none">
+          Conversas <HelpTip text="Inbox em tempo real do WhatsApp. Filtre por status, assuma um atendimento manualmente, envie CSAT e responda em nome do agente." />
+        </h1>
         <FilterTabs value={filter} onChange={setFilter} counts={{
           nao_lidas: Object.values(unread).reduce((a, b) => a + b, 0),
           aguardando_humano: countsAguardandoHumano,
@@ -867,7 +868,7 @@ function ConversasPage() {
 
       {/* Celular: uma coluna só — lista OU conversa (com botão de voltar). Tablet: lista + conversa.
           Desktop largo: as três colunas. A ficha da direita só aparece onde cabe sem apertar. */}
-      <div className="grid md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_280px] 2xl:grid-cols-[320px_1fr_320px] border border-[color:var(--hairline)] rounded-2xl overflow-hidden h-[calc(100dvh-170px)] md:h-[calc(100vh-200px)] min-h-[420px] md:min-h-[500px] bg-[color:var(--panel)]">
+      <div className="grid md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_280px] 2xl:grid-cols-[320px_1fr_320px] border border-[color:var(--hairline)] rounded-2xl overflow-hidden h-[calc(100dvh-170px)] md:h-[calc(100vh-108px)] min-h-[420px] md:min-h-[500px] bg-[color:var(--panel)]">
         {/* LISTA */}
         <aside className={`${active ? "hidden md:flex" : "flex"} border-r border-[color:var(--hairline)] flex-col min-h-0 min-w-0 bg-[color:var(--panel)]`}>
           <div className="p-3 border-b border-[color:var(--hairline)]">

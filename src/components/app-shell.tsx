@@ -156,21 +156,10 @@ export function AppShell({
           recolhida={recolhida}
           alternar={alternarBarra}
         />
-        {/* Com a barra recolhida o conteúdo pode ir mais largo: é para isso que ela recolhe. */}
-        <main className={`flex-1 px-4 pt-4 pb-28 md:p-8 md:pb-8 w-full mx-auto min-w-0 ${recolhida ? "max-w-[1600px]" : "max-w-7xl"}`}>
-          <div className="hidden md:flex items-center justify-between gap-3 mb-6">
-            <WhatsappStatusPill />
-            <div className="flex items-center gap-2 ml-auto">
-              <ThemeToggle />
-              <div
-                className="size-9 rounded-full grid place-items-center text-[13px] font-bold text-[color:var(--brand-text)] ring-1 ring-[color:var(--hairline-strong)]"
-                style={{ background: "var(--brand-soft)" }}
-                title={email || ""}
-              >
-                {(userName || "U").slice(0, 1).toUpperCase()}
-              </div>
-            </div>
-          </div>
+        {/* Sem barra no topo do conteúdo: status do WhatsApp, tema e usuário moram na barra
+            lateral. São ~60px a mais de tela útil em toda página — em Conversas, é a diferença
+            entre ver três mensagens a mais ou não. Com a barra recolhida o conteúdo vai mais largo. */}
+        <main className={`flex-1 px-4 pt-4 pb-28 md:px-6 md:pt-4 md:pb-6 w-full mx-auto min-w-0 ${recolhida ? "max-w-[1600px]" : "max-w-7xl"}`}>
           {children}
         </main>
       </div>
@@ -200,22 +189,27 @@ function Sidebar({
         {recolhida ? <ChevronsRight className="size-3.5" /> : <ChevronsLeft className="size-3.5" />}
       </button>
 
-      <div className={`py-5 flex items-center gap-3 border-b border-[color:var(--hairline)] ${recolhida ? "px-0 justify-center" : "px-5"}`}>
-        {company?.logo_url ? (
-          <img src={company.logo_url} alt={company.nome} title={company?.nome} className="size-10 rounded-xl object-cover ring-1 ring-[color:var(--hairline)] shrink-0" />
-        ) : (
-          <div
-            title={company?.nome}
-            className="size-10 rounded-xl grid place-items-center text-primary-foreground shadow-md ring-1 ring-[color:var(--hairline)] shrink-0"
-            style={{ background: `linear-gradient(135deg, ${primary}, var(--brand-strong))` }}
-          >
-            <Zap className="size-5" strokeWidth={2.5} />
-          </div>
-        )}
+      <div className={`py-4 flex items-center gap-3 border-b border-[color:var(--hairline)] ${recolhida ? "px-0 justify-center" : "px-4"}`}>
+        <div className="relative shrink-0">
+          {company?.logo_url ? (
+            <img src={company.logo_url} alt={company.nome} title={company?.nome} className="size-10 rounded-xl object-cover ring-1 ring-[color:var(--hairline)]" />
+          ) : (
+            <div
+              title={company?.nome}
+              className="size-10 rounded-xl grid place-items-center text-primary-foreground shadow-md ring-1 ring-[color:var(--hairline)]"
+              style={{ background: `linear-gradient(135deg, ${primary}, var(--brand-strong))` }}
+            >
+              <Zap className="size-5" strokeWidth={2.5} />
+            </div>
+          )}
+          {/* Recolhida: o status do WhatsApp vira um ponto no canto do logo. */}
+          {recolhida && <WhatsappStatus compacto />}
+        </div>
         {!recolhida && (
           <div className="min-w-0">
-            <div className="font-display font-extrabold tracking-tight truncate text-[16px]">{brand.name}</div>
-            <div className="text-[11.5px] text-muted-foreground truncate -mt-0.5">{company?.nome || "Sua empresa"}</div>
+            <div className="font-display font-extrabold tracking-tight truncate text-[16px] leading-tight">{brand.name}</div>
+            <div className="text-[11.5px] text-muted-foreground truncate">{company?.nome || "Sua empresa"}</div>
+            <WhatsappStatus />
           </div>
         )}
       </div>
@@ -259,13 +253,14 @@ function Sidebar({
             >
               {(userName || "U").slice(0, 1).toUpperCase()}
             </div>
+            <ThemeToggle />
             <button onClick={signOut} title="Sair" className="size-9 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]">
               <LogOut className="size-4" />
             </button>
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[color:var(--panel-2)] border border-[color:var(--hairline)]">
+            <div className="flex items-center gap-2 px-2 py-2 rounded-xl bg-[color:var(--panel-2)] border border-[color:var(--hairline)]">
               <div
                 className="size-9 rounded-full grid place-items-center text-[13px] font-bold text-[color:var(--brand-text)] ring-1 ring-[color:var(--hairline-strong)] shrink-0"
                 style={{ background: "var(--brand-soft)" }}
@@ -276,6 +271,7 @@ function Sidebar({
                 <div className="text-[13.5px] font-semibold truncate">{userName}</div>
                 <div className="text-[11px] text-muted-foreground truncate" title={email || ""}>{roleLabel}</div>
               </div>
+              <ThemeToggle />
               <button onClick={signOut} title="Sair" className="size-8 grid place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel)]">
                 <LogOut className="size-4" />
               </button>
@@ -369,19 +365,29 @@ function NavLink({ item, active, primary, count = 0, compacto = false }: { item:
   );
 }
 
-function WhatsappStatusPill() {
+// Status do WhatsApp na barra lateral: linha pequena sob o nome da empresa ou, com a barra
+// recolhida, um ponto no canto do logo. Clica e vai para Conexão.
+function WhatsappStatus({ compacto = false }: { compacto?: boolean }) {
   const status = useWhatsappStatus();
   const connected = status === "connected";
   const connecting = status === "connecting";
   const label = connected ? "WhatsApp conectado" : connecting ? "Conectando…" : "WhatsApp desconectado";
   const color = connected ? "#16a34a" : connecting ? "#f59e0b" : "#dc2626";
+  if (compacto) {
+    return (
+      <Link
+        to="/app/conexao"
+        title={label}
+        aria-label={label}
+        className="absolute -right-1 -bottom-1 size-3.5 rounded-full ring-2 ring-[color:var(--sidebar-bg)]"
+        style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+      />
+    );
+  }
   return (
-    <div
-      className="flex items-center gap-2 text-[13.5px] font-medium px-3 py-1.5 rounded-full bg-[color:var(--panel)] border border-[color:var(--hairline)]"
-      style={{ color }}
-    >
-      <span className="size-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
-      {label}
-    </div>
+    <Link to="/app/conexao" className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium hover:underline" style={{ color }} title="Abrir Conexão">
+      <span className="size-1.5 rounded-full shrink-0" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+      <span className="truncate">{label}</span>
+    </Link>
   );
 }
