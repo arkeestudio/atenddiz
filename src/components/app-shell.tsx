@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import type { CompanyRow, Membership } from "@/lib/tenant";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
 import { useAguardandoHumano } from "@/hooks/use-aguardando-humano";
+import { useAvisosSistema } from "@/hooks/use-avisos-sistema";
 
 type NavItem = {
   to: string;
@@ -69,6 +70,7 @@ export function AppShell({
   const loc = useLocation();
   const navigate = useNavigate();
   const aguardandoHumano = useAguardandoHumano(company?.id);
+  useAvisosSistema(company?.id);
 
   // Começa aberta no servidor e lê a preferência no cliente: sem acesso ao localStorage
   // durante o SSR, e um piscar de 190px na primeira pintura é melhor que hidratação divergente.

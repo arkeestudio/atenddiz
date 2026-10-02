@@ -68,6 +68,26 @@ export function descreverHorario(d: Date): string {
   return `${fmtDia.format(d)} às ${fmtHora.format(d)}`;
 }
 
+/**
+ * Ocupados pela própria tabela `agendamento` — para empresa sem Google Agenda. Serve tanto
+ * para a lista do prompt quanto para conferir conflito na hora de marcar.
+ */
+export async function ocupadosLocais(
+  admin: any,
+  companyId: string,
+  deIso: string,
+  ateIso: string,
+): Promise<Array<{ inicio: string; fim: string }>> {
+  const { data } = await admin
+    .from("agendamento")
+    .select("inicio, fim")
+    .eq("company_id", companyId)
+    .neq("status", "cancelado")
+    .lt("inicio", ateIso)
+    .gt("fim", deIso);
+  return ((data ?? []) as Array<{ inicio: string; fim: string }>).map((r) => ({ inicio: r.inicio, fim: r.fim }));
+}
+
 /** Já existe agendamento deste contato no mesmo horário? (a IA às vezes repete o marcador) */
 export async function jaAgendado(admin: any, companyId: string, cardId: string | null, inicio: Date): Promise<boolean> {
   if (!cardId) return false;

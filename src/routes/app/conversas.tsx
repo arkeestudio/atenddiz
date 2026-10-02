@@ -44,7 +44,7 @@ export const Route = createFileRoute("/app/conversas")({
 
 interface Msg {
   id: string; numero: string; contato_nome: string | null;
-  direcao: "entrada" | "saida"; autor: "ia" | "humano" | "contato";
+  direcao: "entrada" | "saida"; autor: "ia" | "humano" | "contato" | "sistema";
   texto: string; created_at: string; user_id: string | null;
   status_entrega?: string | null;
 }
@@ -914,7 +914,7 @@ function ConversasPage() {
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <p className={`text-[12px] truncate flex-1 ${u > 0 ? "text-foreground" : "text-muted-foreground"}`}>
-                          {textoSemMarcadorMidia(c.last.texto).replace(/📝 Transcrição:\s*/g, "").replace(/^🎤 \[(Áudio|Nota de Voz)\]\s*/, "🎤 ")}
+                          {textoSemMarcadorMidia(c.last.texto).replace(/📝 Transcrição:\s*/g, "").replace(/^🎤 \[(Áudio|Nota de Voz)\]\s*/, "🎤 ").replace(NOTA_INTERNA, "🔒")}
                         </p>
                         {aguardandoHumano ? (
                           <span
@@ -1857,7 +1857,8 @@ function Bubble({
       <div className="flex justify-center my-3">
         <div className="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 text-[13px] bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded-2xl shadow-sm">
           <div className="flex items-center gap-1.5 font-bold text-[10.5px] uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">
-            <Lock className="size-3" /> Nota Interna — Visível apenas para a equipe
+            {m.autor === "sistema" ? <Bot className="size-3" /> : <Lock className="size-3" />}
+            {m.autor === "sistema" ? "Aviso da IA para a equipe — o cliente não vê" : "Nota Interna — Visível apenas para a equipe"}
           </div>
           <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{displayText}</div>
           <div className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-1 text-right">

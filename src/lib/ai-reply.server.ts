@@ -62,11 +62,13 @@ export async function runAiReply(opts: {
 
   // 12 mensagens em vez do histórico inteiro: o que é antigo já está resumido na ficha,
   // que vai no prompt. Menos tokens por resposta, sem perder o contexto do contato.
+  // Notas internas (da equipe ou do sistema) ficam fora: a IA leria como fala dela própria.
   const { data: histDesc } = await supabaseAdmin
     .from("mensagens")
     .select("autor,direcao,texto,created_at")
     .eq("company_id", companyId)
     .eq("numero", number)
+    .not("texto", "like", `${NOTA_INTERNA}%`)
     .order("created_at", { ascending: false })
     .limit(12);
   const historico = ((histDesc ?? []) as any[]).slice().reverse();
@@ -98,17 +100,20 @@ export async function runAiReply(opts: {
   // A IA só pode oferecer horário que a agenda não tenha: os ocupados dos próximos dias vão
   // no prompt. Se o Google falhar, segue sem a lista — o conflito é conferido de novo na hora
   // de marcar, então o pior caso é a IA propor um horário que o sistema vai recusar.
-  const agendaLigada = !!googleIntegration?.conectado && !!cfg?.agendamento_ativo;
+  const googleConectado = !!googleIntegration?.conectado;
+  const agendaLigada = !!cfg?.agendamento_ativo;
   let ocupados: Array<{ inicio: string; fim: string }> | null = null;
   if (agendaLigada) {
     try {
-      const { listarOcupados } = await import("@/lib/google.server");
-      const { DIAS_OCUPADOS_NO_PROMPT } = await import("@/lib/agenda.server");
+      const { DIAS_OCUPADOS_NO_PROMPT, ocupadosLocais } = await import("@/lib/agenda.server");
       const agora = new Date();
-      ocupados = await listarOcupados(
-        supabaseAdmin, companyId, agora.toISOString(),
-        new Date(agora.getTime() + DIAS_OCUPADOS_NO_PROMPT * 86_400_000).toISOString(),
-      );
+      const ate = new Date(agora.getTime() + DIAS_OCUPADOS_NO_PROMPT * 86_400_000).toISOString();
+      if (googleConectado) {
+        const { listarOcupados } = await import("@/lib/google.server");
+        ocupados = await listarOcupados(supabaseAdmin, companyId, agora.toISOString(), ate);
+      } else {
+        ocupados = await ocupadosLocais(supabaseAdmin, companyId, agora.toISOString(), ate);
+      }
     } catch (e: any) {
       console.warn("[agenda] não foi possível ler os ocupados:", e?.message);
     }
@@ -233,36 +238,69 @@ export async function runAiReply(opts: {
   // a agenda está livre naquele intervalo (lida de novo agora, não a de minutos atrás)?
   // já não foi marcado? Qualquer "não" vira um aviso honesto ao cliente, em vez de um
   // "agendado!" que a coordenação descobriria em cima da hora que não existia.
+  // E, em cada desfecho, a equipe fica sabendo: nota interna na conversa (só a equipe vê),
+  // próxima ação no card do funil e, se deu certo, a visita registrada — com ou sem Google.
+  // Uma IA atendendo 30 pessoas não pode decidir sozinha sem deixar rastro para o humano.
   let agendaResultado: string | null = null;
-  if (agendar && googleIntegration?.conectado) {
-    const { validarAgendamento, conflita, jaAgendado, descreverHorario } = await import("@/lib/agenda.server");
-    const { listarOcupados, createCalendarEventForCompany } = await import("@/lib/google.server");
+  if (agendar && agendaLigada) {
+    const { validarAgendamento, conflita, jaAgendado, descreverHorario, ocupadosLocais } = await import("@/lib/agenda.server");
     const v = validarAgendamento(agendar);
+    const nome = (cardRow as any)?.nome || pushName || number;
     if (!v.ok) {
       agendaResultado = `recusado: ${v.motivo}`;
       finalParts.push(`Só um ajuste: não consegui registrar esse horário, ${v.motivo}. Pode me confirmar o dia e a hora de novo?`);
+      await notaInterna(supabaseAdmin, companyId, userId, number, `⚠️ A IA tentou marcar uma visita, mas ${v.motivo}. Pediu outro horário ao cliente.`);
     } else {
+      const quando = descreverHorario(v.inicio);
       try {
-        const ocupadosAgora = await listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
+        const ocupadosAgora = googleConectado
+          ? await (await import("@/lib/google.server")).listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString())
+          : await ocupadosLocais(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
         if (conflita(ocupadosAgora, v.inicio, v.fim)) {
-          agendaResultado = `conflito em ${descreverHorario(v.inicio)}`;
-          finalParts.push(`Ih, ${descreverHorario(v.inicio)} acabou de ficar ocupado na agenda. Tem outro horário que fica bom para você?`);
+          agendaResultado = `conflito em ${quando}`;
+          finalParts.push(`Ih, ${quando} acabou de ficar ocupado na agenda. Tem outro horário que fica bom para você?`);
+          await notaInterna(supabaseAdmin, companyId, userId, number, `⚠️ ${nome} pediu visita ${quando}, mas o horário está ocupado. A IA pediu outro horário.`);
         } else if (await jaAgendado(supabaseAdmin, companyId, (cardRow as any)?.id ?? null, v.inicio)) {
           agendaResultado = "já existia, não duplicou";
         } else {
-          await createCalendarEventForCompany(supabaseAdmin, companyId, {
-            titulo: agendar.titulo,
-            inicio: v.inicio.toISOString(),
-            fim: v.fim.toISOString(),
-            descricao: `Agendado via WhatsApp — ${pushName || number}`,
-            cardId: (cardRow as any)?.id ?? null,
-          });
-          agendaResultado = `criado ${descreverHorario(v.inicio)}`;
+          if (googleConectado) {
+            const { createCalendarEventForCompany } = await import("@/lib/google.server");
+            await createCalendarEventForCompany(supabaseAdmin, companyId, {
+              titulo: agendar.titulo,
+              inicio: v.inicio.toISOString(),
+              fim: v.fim.toISOString(),
+              descricao: `Agendado via WhatsApp — ${nome}`,
+              cardId: (cardRow as any)?.id ?? null,
+            });
+          } else {
+            await supabaseAdmin.from("agendamento").insert({
+              company_id: companyId,
+              card_id: (cardRow as any)?.id ?? null,
+              titulo: agendar.titulo,
+              inicio: v.inicio.toISOString(),
+              fim: v.fim.toISOString(),
+              status: "agendado",
+            });
+          }
+          agendaResultado = `criado ${quando}`;
+          // O card do funil mostra a próxima ação e a data: quem olha o Kanban vê "Visita
+          // sex., 03/10 às 10:00" sem abrir a conversa.
+          await supabaseAdmin
+            .from("crm_cards")
+            .update({ proxima_acao: `${agendar.titulo} — ${quando}`, follow_up: v.inicio.toISOString() } as any)
+            .eq("company_id", companyId)
+            .eq("numero", number);
+          await notaInterna(
+            supabaseAdmin, companyId, userId, number,
+            `📅 Visita marcada pela IA — ${quando} (${agendar.titulo}). ` +
+              (googleConectado ? "Já está no Google Agenda." : "Google Agenda não conectado: confira a agenda e confirme com a família."),
+          );
         }
       } catch (e: any) {
         agendaResultado = `erro: ${e?.message}`;
         console.error("[agendar]", e?.message);
         finalParts.push("Não consegui confirmar na agenda agora. Vou pedir para a equipe confirmar esse horário com você.");
+        await notaInterna(supabaseAdmin, companyId, userId, number, `⚠️ ${nome} confirmou visita ${quando}, mas o sistema não conseguiu registrar (${e?.message}). Confirme manualmente.`);
       }
     }
   }
@@ -429,6 +467,12 @@ export async function runAiReply(opts: {
     await ficha.registrarTransferenciaHumano({
       admin: supabaseAdmin, companyId, userId, numero: number, motivo: encaminharHumano,
     });
+    await notaInterna(supabaseAdmin, companyId, userId, number, `🙋 A IA transferiu para a equipe: ${encaminharHumano}. O contato está na fila Aguardando Humano.`);
+    await supabaseAdmin
+      .from("crm_cards")
+      .update({ proxima_acao: `Equipe: ${encaminharHumano}` } as any)
+      .eq("company_id", companyId)
+      .eq("numero", number);
   } else {
     await ficha.atualizarFichaSeNecessario({ admin: supabaseAdmin, companyId, numero: number });
   }
@@ -517,6 +561,30 @@ async function getAiThrottleReason(admin: any, companyId: string, numero: string
   // Teto da empresa por minuto: 60 bolhas ≈ 20 respostas. Protege contra disparo em massa.
   if ((saidasEmpresa.count ?? 0) >= 60) return "limite da empresa: mais de 60 mensagens da IA em 1 min";
   return null;
+}
+
+// Mesmo prefixo das notas da equipe (evolution.functions.ts / conversas.tsx): o painel mostra
+// como cartão âmbar "só a equipe vê" e o WhatsApp nunca recebe.
+const NOTA_INTERNA = "🔒 [NOTA INTERNA]:";
+
+/**
+ * Aviso da IA para a equipe, dentro da conversa. É o que falta quando a IA atende 30 pessoas
+ * e decide coisas (marca visita, transfere): o humano precisa ver onde e quando aconteceu.
+ * O painel também transforma essas notas em alerta em tempo real.
+ */
+async function notaInterna(admin: any, companyId: string, userId: string, numero: string, texto: string) {
+  try {
+    await admin.from("mensagens").insert({
+      company_id: companyId,
+      user_id: userId,
+      numero,
+      direcao: "saida",
+      autor: "sistema",
+      texto: `${NOTA_INTERNA} ${texto}`,
+    });
+  } catch (e: any) {
+    console.warn("[nota-interna] não gravou:", e?.message);
+  }
 }
 
 /** Quando a IA decide NÃO responder, isso precisa aparecer no histórico do lead — "parou do nada" é o pior diagnóstico. */

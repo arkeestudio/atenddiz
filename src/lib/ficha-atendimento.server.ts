@@ -52,6 +52,8 @@ export async function atualizarFichaComIa(opts: {
       .select("autor, direcao, texto, created_at")
       .eq("company_id", companyId)
       .eq("numero", numero)
+      // Notas internas (equipe ou sistema) não são conversa com o cliente: ficam fora da ficha.
+      .not("texto", "like", "🔒 [NOTA INTERNA]%")
       .order("created_at", { ascending: false })
       .limit(30),
   ]);

@@ -421,10 +421,13 @@ Se uma frase só já resolve, use UMA parte e pronto (sem o marcador). Nunca mai
 
   blocos.push(blocoCalendario());
 
-  if (c.agendamento_ativo && opts?.googleConectado) {
+  // O marcador vale com ou sem Google Agenda: sem ele, o sistema registra a visita no
+  // próprio Atendizz e avisa a equipe. Antes, sem Google a IA dizia "confirmada" e a
+  // visita não ficava registrada em lugar nenhum.
+  if (c.agendamento_ativo) {
     const nowIso = new Date().toISOString();
     blocos.push(
-      `AGENDAMENTO REAL (Google Agenda conectado):
+      `AGENDAMENTO (o sistema registra a visita e avisa a equipe${opts?.googleConectado ? "; Google Agenda conectado" : ""}):
 Hoje é ${nowIso} (UTC, fuso America/Sao_Paulo). Quando o cliente CONFIRMAR um horário específico (dia + hora) para um serviço agendável, ` +
         `na MESMA resposta, em uma nova linha, escreva exatamente:
 [AGENDAR: AAAA-MM-DDTHH:MM | AAAA-MM-DDTHH:MM | título curto]
