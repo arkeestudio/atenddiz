@@ -938,7 +938,13 @@ function ConversasPage() {
             </div>
           ) : (
             <>
-              <header className="flex items-start gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
+              {/* @container: o cabeçalho reage à largura DESTA coluna, não da janela. Com a barra
+                  lateral aberta num notebook, a janela é "desktop" mas a coluna tem 450px — e era
+                  aí que as pílulas espremiam e o nome sumia. Abaixo de 32rem as ações descem
+                  para uma segunda linha; abaixo de 36rem ficam só com o ícone. */}
+              <header className="@container px-3 sm:px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
+               <div className="flex flex-col @lg:flex-row @lg:items-start gap-2 @lg:gap-3">
+               <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1">
                 {/* Celular: a lista some quando uma conversa abre; este botão traz ela de volta. */}
                 <button
                   type="button"
@@ -954,7 +960,7 @@ function ConversasPage() {
                       para o cabeçalho não virar uma fileira de botões soltos. */}
                   <div className="flex items-baseline gap-2 min-w-0">
                     <span className="font-semibold text-sm truncate">{activeConv?.nome || active}</span>
-                    <span className="text-[11px] text-muted-foreground font-mono shrink-0">{active}</span>
+                    <span className="hidden @sm:inline text-[11px] text-muted-foreground font-mono shrink-0">{active}</span>
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                     {stages.length > 0 && (
@@ -1042,6 +1048,7 @@ function ConversasPage() {
                     )}
                   </div>
                 </div>
+               </div>
                 {/* Só o que se usa a cada conversa fica à vista; o resto vai para o menu. */}
                 <div className="ml-auto flex items-center gap-2 shrink-0">
                   <label
@@ -1051,9 +1058,9 @@ function ConversasPage() {
                     <Bot className="size-3.5" /> IA
                     <Switch checked={iaAtivaAqui} onCheckedChange={(v) => void toggleIa(v)} />
                   </label>
-                  {/* Em coluna estreita os botões ficam só com o ícone; o texto volta a partir de lg. */}
-                  <Button size="sm" variant="outline" onClick={() => void assumir()} title="Assumir a conversa (pausa a IA para este contato)" className="px-2 lg:px-3">
-                    <Hand className="size-3.5 lg:mr-1" /> <span className="hidden lg:inline">Assumir</span>
+                  {/* Em coluna estreita os botões ficam só com o ícone; o texto volta quando a coluna passa de 36rem. */}
+                  <Button size="sm" variant="outline" onClick={() => void assumir()} title="Assumir a conversa (pausa a IA para este contato)" className="px-2 @xl:px-3">
+                    <Hand className="size-3.5 @xl:mr-1" /> <span className="hidden @xl:inline">Assumir</span>
                   </Button>
                   {activeCard && (
                     <Button
@@ -1061,11 +1068,11 @@ function ConversasPage() {
                       variant="outline"
                       onClick={() => setDrawerCard(activeCard)}
                       title="Ficha do atendimento: o que a IA coletou, editável pela equipe"
-                      className={`px-2 lg:px-3 ${activeCard.aguardando_humano
+                      className={`px-2 @xl:px-3 ${activeCard.aguardando_humano
                         ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
                         : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"}`}
                     >
-                      <ClipboardList className="size-3.5 lg:mr-1" /> <span className="hidden lg:inline">Ficha</span>
+                      <ClipboardList className="size-3.5 @xl:mr-1" /> <span className="hidden @xl:inline">Ficha</span>
                     </Button>
                   )}
                   <DropdownMenu>
@@ -1104,6 +1111,7 @@ function ConversasPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+               </div>
               </header>
 
               <div ref={threadRef} className="flex-1 overflow-auto px-4 py-4 flex flex-col">
