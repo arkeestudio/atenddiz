@@ -150,13 +150,15 @@ export async function runAiReply(opts: {
   if (!hasCredit) {
     await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
     console.warn("[credits] créditos esgotados — IA não respondeu", companyId);
+    await registrarSemResposta(supabaseAdmin, companyId, number, "créditos de IA esgotados");
     return "no_credits";
   }
   const throttleReason = await getAiThrottleReason(supabaseAdmin, companyId, number);
   if (throttleReason) {
     await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
     console.warn("[whatsapp.safety] resposta pausada", throttleReason, companyId, number);
-    return throttleReason;
+    await registrarSemResposta(supabaseAdmin, companyId, number, throttleReason);
+    return "throttled";
   }
   const plan = await getCompanyPlan(companyId);
   let providerChoice = ((cfg as any)?.ai_provider || "gemini") as string;
@@ -471,9 +473,17 @@ function sanitizeAiParts(parts: string[]) {
   return saida.slice(0, 2);
 }
 
+/**
+ * Freio contra loop (a IA respondendo a si mesma ou disparando em rajada), não contra
+ * conversa animada. A regra antiga — 6 mensagens da IA em 10 min — contava BOLHAS, e com
+ * 1 a 3 bolhas por resposta duas ou três respostas já paravam a IA no meio do papo, sem
+ * aviso. Agora só barra quando a IA fala muito mais do que o cliente escreve, que é a
+ * assinatura do loop; quem conversa de verdade nunca encosta nisso.
+ */
 async function getAiThrottleReason(admin: any, companyId: string, numero: string): Promise<string | null> {
   const now = Date.now();
-  const [contactRecent, companyRecent] = await Promise.all([
+  const desde10 = new Date(now - 10 * 60_000).toISOString();
+  const [saidasContato, entradasContato, saidasEmpresa] = await Promise.all([
     admin
       .from("mensagens")
       .select("id", { count: "exact", head: true })
@@ -481,7 +491,14 @@ async function getAiThrottleReason(admin: any, companyId: string, numero: string
       .eq("numero", numero)
       .eq("direcao", "saida")
       .eq("autor", "ia")
-      .gte("created_at", new Date(now - 10 * 60_000).toISOString()),
+      .gte("created_at", desde10),
+    admin
+      .from("mensagens")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", companyId)
+      .eq("numero", numero)
+      .eq("direcao", "entrada")
+      .gte("created_at", desde10),
     admin
       .from("mensagens")
       .select("id", { count: "exact", head: true })
@@ -491,9 +508,27 @@ async function getAiThrottleReason(admin: any, companyId: string, numero: string
       .gte("created_at", new Date(now - 60_000).toISOString()),
   ]);
 
-  if ((contactRecent.count ?? 0) >= 6) return "contact-rate-limit";
-  if ((companyRecent.count ?? 0) >= 20) return "company-rate-limit";
+  const saidas = saidasContato.count ?? 0;
+  const entradas = entradasContato.count ?? 0;
+  // 18 bolhas ≈ 6 respostas. Só é loop se, além disso, a IA mandou mais de 3x o que recebeu.
+  if (saidas >= 18 && saidas > entradas * 3 + 3) {
+    return `limite de segurança: ${saidas} mensagens da IA para ${entradas} do cliente em 10 min (parece loop)`;
+  }
+  // Teto da empresa por minuto: 60 bolhas ≈ 20 respostas. Protege contra disparo em massa.
+  if ((saidasEmpresa.count ?? 0) >= 60) return "limite da empresa: mais de 60 mensagens da IA em 1 min";
   return null;
+}
+
+/** Quando a IA decide NÃO responder, isso precisa aparecer no histórico do lead — "parou do nada" é o pior diagnóstico. */
+async function registrarSemResposta(admin: any, companyId: string, numero: string, motivo: string) {
+  try {
+    const { data: card } = await admin.from("crm_cards").select("id").eq("company_id", companyId).eq("numero", numero).maybeSingle();
+    if (card?.id) {
+      await admin.from("lead_evento").insert({ company_id: companyId, card_id: card.id, tipo: "ia_nao_respondeu", descricao: motivo });
+    }
+  } catch (e: any) {
+    console.warn("[ia_nao_respondeu] não registrou:", e?.message);
+  }
 }
 
 export async function upsertCard(
