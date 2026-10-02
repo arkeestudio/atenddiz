@@ -833,7 +833,8 @@ const server = http.createServer(async (req, res) => {
               return 'ok:' + origem;
             }, chatId, modo);
             ok = String(r).startsWith('ok');
-            if (!ok) console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
+            if (ok) console.log(`[OpenWA presence] ${modo} ${r} (${chatId})`);
+            else console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
           } catch (e) {
             console.warn(`[OpenWA presence] módulos falharam (${modo}): ${e.message}`);
           }
