@@ -11,7 +11,7 @@ import {
   Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink, RotateCcw,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
   Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList,
-  Clock, MoreVertical
+  Clock, MoreVertical, ArrowLeft
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
@@ -860,9 +860,11 @@ function ConversasPage() {
         }} />
       </header>
 
-      <div className="grid md:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_300px] border border-[color:var(--hairline)] rounded-2xl overflow-hidden h-[calc(100vh-200px)] min-h-[500px] bg-[color:var(--panel)]">
+      {/* Celular: uma coluna só — lista OU conversa (com botão de voltar). Tablet: lista + conversa.
+          Desktop largo: as três colunas. A ficha da direita só aparece onde cabe sem apertar. */}
+      <div className="grid md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_280px] 2xl:grid-cols-[320px_1fr_320px] border border-[color:var(--hairline)] rounded-2xl overflow-hidden h-[calc(100dvh-170px)] md:h-[calc(100vh-200px)] min-h-[420px] md:min-h-[500px] bg-[color:var(--panel)]">
         {/* LISTA */}
-        <aside className="border-r border-[color:var(--hairline)] flex flex-col min-h-0 bg-[color:var(--panel)]">
+        <aside className={`${active ? "hidden md:flex" : "flex"} border-r border-[color:var(--hairline)] flex-col min-h-0 min-w-0 bg-[color:var(--panel)]`}>
           <div className="p-3 border-b border-[color:var(--hairline)]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -929,14 +931,23 @@ function ConversasPage() {
         {/* THREAD */}
         {/* min-w-0: sem isso um nome longo no cabeçalho alarga a coluna do meio e empurra
             a ficha para fora da tela (coluna de grid não encolhe sozinha). */}
-        <section className="flex flex-col min-h-0 min-w-0 bg-[color:var(--panel-2)]">
+        <section className={`${active ? "flex" : "hidden md:flex"} flex-col min-h-0 min-w-0 bg-[color:var(--panel-2)]`}>
           {!active ? (
             <div className="flex-1 grid place-items-center text-muted-foreground text-sm">
               <div className="text-center"><MessageSquareText className="mx-auto mb-2 size-6" />Selecione uma conversa</div>
             </div>
           ) : (
             <>
-              <header className="flex items-start gap-3 px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
+              <header className="flex items-start gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
+                {/* Celular: a lista some quando uma conversa abre; este botão traz ela de volta. */}
+                <button
+                  type="button"
+                  onClick={() => setActive(null)}
+                  title="Voltar para a lista"
+                  className="md:hidden -ml-1 mt-1.5 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]"
+                >
+                  <ArrowLeft className="size-5" />
+                </button>
                 <InitialsAvatar name={activeConv?.nome || active} size={38} src={activeCard?.foto_url} />
                 <div className="min-w-0 flex-1">
                   {/* Linha 1: quem é. Linha 2: o estado da conversa. As ações ficam à direita,
@@ -1040,8 +1051,9 @@ function ConversasPage() {
                     <Bot className="size-3.5" /> IA
                     <Switch checked={iaAtivaAqui} onCheckedChange={(v) => void toggleIa(v)} />
                   </label>
-                  <Button size="sm" variant="outline" onClick={() => void assumir()}>
-                    <Hand className="size-3.5 mr-1" /> Assumir
+                  {/* Em coluna estreita os botões ficam só com o ícone; o texto volta a partir de lg. */}
+                  <Button size="sm" variant="outline" onClick={() => void assumir()} title="Assumir a conversa (pausa a IA para este contato)" className="px-2 lg:px-3">
+                    <Hand className="size-3.5 lg:mr-1" /> <span className="hidden lg:inline">Assumir</span>
                   </Button>
                   {activeCard && (
                     <Button
@@ -1049,11 +1061,11 @@ function ConversasPage() {
                       variant="outline"
                       onClick={() => setDrawerCard(activeCard)}
                       title="Ficha do atendimento: o que a IA coletou, editável pela equipe"
-                      className={activeCard.aguardando_humano
+                      className={`px-2 lg:px-3 ${activeCard.aguardando_humano
                         ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
-                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"}
+                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"}`}
                     >
-                      <ClipboardList className="size-3.5 mr-1" /> Ficha
+                      <ClipboardList className="size-3.5 lg:mr-1" /> <span className="hidden lg:inline">Ficha</span>
                     </Button>
                   )}
                   <DropdownMenu>
@@ -1696,10 +1708,11 @@ function FilterTabs({
     { v: "resolvidas", label: "Resolvidas" },
   ];
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-[color:var(--hairline)] bg-[color:var(--panel)] p-1 gap-0.5">
+    // Em tela estreita as abas rolam de lado em vez de quebrar em três linhas.
+    <div className="flex min-w-0 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-[color:var(--hairline)] bg-[color:var(--panel)] p-1 gap-0.5">
       {opts.map((o) => (
         <button key={o.v} onClick={() => onChange(o.v)}
-          className={`px-3 py-1.5 text-[12.5px] font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+          className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-[12.5px] font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
             value === o.v ? "bg-[color:var(--brand-soft)] text-[color:var(--brand-text)]" : "text-muted-foreground hover:text-foreground"
           }`}>
           {o.label}
