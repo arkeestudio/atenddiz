@@ -294,6 +294,81 @@ async function getFfmpegBinary() {
 }
 
 // Nota de voz do WhatsApp precisa ser OGG/Opus; o navegador grava em WebM.
+// --- Ajudantes injetados na página do WhatsApp Web -------------------------------------------
+// O open-wa depende do window.Store, que some quando o WhatsApp Web atualiza. O que não some
+// é o window.require dos módulos. Estes ajudantes resolvem um chat (inclusive contas @lid) e
+// acham um módulo pelo nome ou varrendo o mapa — a mesma técnica que mantém o envio de texto
+// funcionando. Ficam em window.__atenddiz e são instalados uma vez por página.
+const PAGINA_HELPERS_SRC = `
+window.__atenddiz = window.__atenddiz || (() => {
+  const req = window.require;
+  function chats() {
+    const doStore = window.Store && window.Store.Chat;
+    if (doStore && typeof doStore.get === 'function') return doStore;
+    for (const nome of ['WAWebChatCollection', 'WAWebChatStore']) {
+      try {
+        const m = req(nome);
+        const c = (m && (m.ChatCollection || m.Chat || m.default)) || null;
+        if (c && typeof c.get === 'function') return c;
+      } catch (e) {}
+    }
+    return null;
+  }
+  async function resolverChat(targetChatId) {
+    const col = chats();
+    if (!col) return { chat: null, motivo: 'sem-colecao' };
+    const digits = String(targetChatId).replace(/\\D/g, '');
+    const jid = String(targetChatId).includes('@') ? String(targetChatId) : digits + '@c.us';
+    let wid = null;
+    try { wid = req('WAWebWidFactory').createWid(jid); } catch (e) {}
+    let lid = null;
+    if (wid && !jid.endsWith('@g.us') && !jid.endsWith('@lid')) {
+      try {
+        const ex = await req('WAWebQueryExistsJob').queryWidExists(wid);
+        if (ex && ex.wid) { wid = ex.wid; if (ex.lid) lid = ex.lid; }
+      } catch (e) {}
+    }
+    const tentativas = [wid, wid && wid._serialized, lid, lid && lid._serialized, jid].filter(Boolean);
+    for (const t of tentativas) {
+      try { const c = col.get(t); if (c) return { chat: c, motivo: 'ok' }; } catch (e) {}
+    }
+    try {
+      if (wid && typeof col.getLatestChatForWid === 'function') {
+        const c = col.getLatestChatForWid(wid);
+        if (c) return { chat: c, motivo: 'ok-latest' };
+      }
+    } catch (e) {}
+    try {
+      const f = await req('WAWebFindChatAction').findOrCreateLatestChat(wid || jid);
+      const c = (f && f.chat) || f;
+      if (c && c.id) return { chat: c, motivo: 'ok-find' };
+    } catch (e) {}
+    return { chat: null, motivo: 'sem-chat' };
+  }
+  function acharModulo(nomes, pred) {
+    for (const nome of nomes) {
+      try { const m = req(nome); if (m && pred(m)) return { mod: m, origem: nome }; } catch (e) {}
+    }
+    try {
+      const dbg = req('__debug');
+      const mapa = (dbg && dbg.modulesMap) || {};
+      for (const k of Object.keys(mapa)) {
+        let m = null;
+        try { m = mapa[k] && mapa[k].exports; } catch (e) { continue; }
+        if (!m) continue;
+        if (pred(m)) return { mod: m, origem: 'mapa:' + k };
+        if (m.default && pred(m.default)) return { mod: m.default, origem: 'mapa:' + k + ':default' };
+      }
+    } catch (e) {}
+    return { mod: null, origem: null };
+  }
+  return { chats, resolverChat, acharModulo };
+})();
+`;
+async function garantirHelpers(page) {
+  await page.evaluate((src) => { if (!window.__atenddiz) (0, eval)(src); }, PAGINA_HELPERS_SRC);
+}
+
 async function toOggOpusDataUrl(dataUrl) {
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) throw new Error('Áudio inválido: esperado data URL em base64');
@@ -754,50 +829,24 @@ const server = http.createServer(async (req, res) => {
           const page = s.client._page || s.client.page;
           if (page) {
             try {
+              await garantirHelpers(page);
               const r = await page.evaluate(async (targetChatId, modoPresenca) => {
-                const req = window.require;
-                const chats = (() => {
-                  const doStore = window.Store && window.Store.Chat;
-                  if (doStore && typeof doStore.get === 'function') return doStore;
-                  for (const nome of ['WAWebChatCollection', 'WAWebChatStore']) {
-                    try {
-                      const mod = req(nome);
-                      const col = mod?.ChatCollection || mod?.Chat;
-                      if (col && typeof col.get === 'function') return col;
-                    } catch (err) {}
-                  }
-                  return null;
-                })();
-                const chat = chats && chats.get(targetChatId);
-                if (!chat) return 'sem-chat';
-
-                // Módulo de presença: pelo nome e, se não achar, varrendo o mapa de módulos
-                // atrás de quem exporta markComposing/markRecording/markPaused.
-                let mod = null;
-                for (const nome of ['WAWebPresenceChatAction', 'WAWebChatPresence', 'WAWebChatPresenceActions']) {
-                  try {
-                    const m = req(nome);
-                    if (m && typeof m.markComposing === 'function') { mod = m; break; }
-                  } catch (err) {}
-                }
-                if (!mod) {
-                  try {
-                    const mapa = req('__debug')?.modulesMap || {};
-                    for (const k of Object.keys(mapa)) {
-                      let m = null;
-                      try { m = mapa[k]?.exports; } catch (err) { continue; }
-                      if (m && typeof m.markComposing === 'function' && typeof m.markRecording === 'function') { mod = m; break; }
-                    }
-                  } catch (err) {}
-                }
+                const h = window.__atenddiz;
+                const { chat, motivo } = await h.resolverChat(targetChatId);
+                if (!chat) return motivo;
+                // Módulo de presença: quem exporta markComposing/markRecording/markPaused.
+                const { mod, origem } = h.acharModulo(
+                  ['WAWebPresenceChatAction', 'WAWebChatPresence', 'WAWebChatPresenceActions'],
+                  (m) => typeof m.markComposing === 'function' && typeof m.markRecording === 'function',
+                );
                 if (!mod) return 'sem-modulo';
                 if (modoPresenca === 'composing') await mod.markComposing(chat);
                 else if (modoPresenca === 'recording') await mod.markRecording(chat);
                 else if (typeof mod.markPaused === 'function') await mod.markPaused(chat);
-                return 'ok';
+                return 'ok:' + origem;
               }, chatId, modo);
-              if (r !== 'ok') console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
-              ok = r === 'ok';
+              ok = String(r).startsWith('ok');
+              if (!ok) console.warn(`[OpenWA presence] módulos: ${r} (${modo}, ${chatId})`);
             } catch (e) {
               console.warn(`[OpenWA presence] módulos falharam (${modo}): ${e.message}`);
             }
@@ -827,34 +876,27 @@ const server = http.createServer(async (req, res) => {
           let ok = false;
           if (page) {
             try {
-              ok = await page.evaluate(async (targetChatId) => {
-                const r = window.require;
-                const chats = (() => {
-                  const doStore = window.Store && window.Store.Chat;
-                  if (doStore && typeof doStore.get === "function") return doStore;
-                  for (const nome of ["WAWebChatCollection", "WAWebChatStore"]) {
-                    try {
-                      const mod = r(nome);
-                      const col = mod?.ChatCollection || mod?.Chat;
-                      if (col && typeof col.get === "function") return col;
-                    } catch (err) {}
-                  }
-                  return null;
-                })();
-                const chat = chats && chats.get(targetChatId);
-                if (!chat) return false;
-                for (const nome of ["WAWebUpdateUnreadChatAction", "WAWebSendSeenAction", "WAWebChatSeenAction"]) {
-                  try {
-                    const mod = r(nome);
-                    const fn = mod?.sendSeen || mod?.markChatSeen || mod?.updateChatSeen;
-                    if (typeof fn === "function") { await fn(chat); return true; }
-                  } catch (err) {}
-                }
-                return false;
+              await garantirHelpers(page);
+              const r = await page.evaluate(async (targetChatId) => {
+                const h = window.__atenddiz;
+                const { chat, motivo } = await h.resolverChat(targetChatId);
+                if (!chat) return motivo;
+                const { mod, origem } = h.acharModulo(
+                  ['WAWebUpdateUnreadChatAction', 'WAWebSendSeenAction', 'WAWebChatSeenAction'],
+                  (m) => typeof (m.sendSeen || m.markChatSeen || m.updateChatSeen || m.markSeen) === 'function',
+                );
+                if (!mod) return 'sem-modulo';
+                const fn = mod.sendSeen || mod.markChatSeen || mod.updateChatSeen || mod.markSeen;
+                await fn(chat);
+                return 'ok:' + origem;
               }, chatId);
-            } catch (err) {}
+              ok = String(r).startsWith('ok');
+              if (!ok) console.warn(`[OpenWA sendSeen] módulos: ${r} (${chatId})`);
+            } catch (err) {
+              console.warn(`[OpenWA sendSeen] módulos falharam: ${err.message}`);
+            }
           }
-          if (!ok) console.warn('[OpenWA sendSeen]', e.message);
+          if (!ok && !page) console.warn('[OpenWA sendSeen]', e.message);
         }
       }
       return json({ ok: true });
@@ -881,6 +923,55 @@ const server = http.createServer(async (req, res) => {
         });
       } catch (e) {
         return json({ profilePicUrl: null, name: null, about: null });
+      }
+    }
+
+    // GET /api/sessions/:sessionId/diag?chatId=5585...  (só leitura)
+    // Mostra o que existe dentro do WhatsApp Web desta sessão: window.Store, módulos, se um
+    // chat é encontrado. É o que permite ajustar nomes de módulo sem chutar.
+    const diagMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/diag$/);
+    if (method === 'GET' && diagMatch) {
+      const sessionId = decodeURIComponent(diagMatch[1]);
+      const s = sessions.get(sessionId);
+      if (!s || !s.client) return json({ error: 'Session not connected' }, 400);
+      const page = s.client._page || s.client.page;
+      if (!page) return json({ error: 'Sessão sem página' }, 500);
+      const chatId = url.searchParams.get('chatId') || '';
+      try {
+        await garantirHelpers(page);
+        const info = await page.evaluate(async (targetChatId) => {
+          const req = window.require;
+          const h = window.__atenddiz;
+          const store = window.Store;
+          const out = {
+            temRequire: typeof req === 'function',
+            temStore: !!store,
+            storeChaves: store ? Object.keys(store).slice(0, 80) : [],
+            storeChatFunciona: !!(store && store.Chat && typeof store.Chat.get === 'function'),
+            colecaoChatsPelosModulos: !!h.chats(),
+            modulos: {},
+          };
+          for (const n of ['WAWebChatCollection', 'WAWebChatStore', 'WAWebWidFactory', 'WAWebQueryExistsJob', 'WAWebFindChatAction',
+            'WAWebSendTextMsgChatAction', 'WAWebUpdateUnreadChatAction', 'WAWebSendSeenAction', 'WAWebChatSeenAction',
+            'WAWebPresenceChatAction', 'WAWebChatPresence', '__debug']) {
+            try { const m = req(n); out.modulos[n] = m ? Object.keys(m).slice(0, 25) : 'vazio'; } catch (e) { out.modulos[n] = 'ERRO: ' + e.message; }
+          }
+          const pres = h.acharModulo(['WAWebPresenceChatAction', 'WAWebChatPresence'],
+            (m) => typeof m.markComposing === 'function' && typeof m.markRecording === 'function');
+          out.presenca = pres.origem ? { origem: pres.origem, chaves: Object.keys(pres.mod).slice(0, 20) } : null;
+          const seen = h.acharModulo(['WAWebUpdateUnreadChatAction', 'WAWebSendSeenAction'],
+            (m) => typeof (m.sendSeen || m.markChatSeen || m.markSeen) === 'function');
+          out.visto = seen.origem ? { origem: seen.origem, chaves: Object.keys(seen.mod).slice(0, 20) } : null;
+          try { const dbg = req('__debug'); out.totalModulos = dbg && dbg.modulesMap ? Object.keys(dbg.modulesMap).length : null; } catch (e) { out.totalModulos = 'ERRO: ' + e.message; }
+          if (targetChatId) {
+            const r = await h.resolverChat(targetChatId);
+            out.chat = { motivo: r.motivo, id: r.chat && r.chat.id ? (r.chat.id._serialized || String(r.chat.id)) : null };
+          }
+          return out;
+        }, chatId);
+        return json(info);
+      } catch (e) {
+        return json({ error: e.message }, 500);
       }
     }
 
