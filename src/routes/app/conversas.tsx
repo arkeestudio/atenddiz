@@ -953,33 +953,34 @@ function ConversasPage() {
                   lateral aberta num notebook, a janela é "desktop" mas a coluna tem 450px — e era
                   aí que as pílulas espremiam e o nome sumia. Abaixo de 32rem as ações descem
                   para uma segunda linha; abaixo de 36rem ficam só com o ícone. */}
-              <header className="@container px-3 sm:px-4 py-3 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
-               <div className="flex flex-col @lg:flex-row @lg:items-start gap-2 @lg:gap-3">
-               <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1">
+              <header className="@container px-3 sm:px-4 py-2.5 border-b border-[color:var(--hairline)] bg-[color:var(--panel)]">
+               {/* Duas linhas fixas: em cima avatar + nome + ações; embaixo as pílulas com a largura
+                   toda (order-last + basis-full), alinhadas sob o nome. Os dois invólucros abaixo
+                   são `contents` só para manter o JSX de cada parte onde está. */}
+               <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-2">
+               <div className="contents">
                 {/* Celular: a lista some quando uma conversa abre; este botão traz ela de volta. */}
                 <button
                   type="button"
                   onClick={() => setActive(null)}
                   title="Voltar para a lista"
-                  className="md:hidden -ml-1 mt-1.5 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]"
+                  className="md:hidden -ml-1 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]"
                 >
                   <ArrowLeft className="size-5" />
                 </button>
                 <InitialsAvatar name={activeConv?.nome || active} size={38} src={activeCard?.foto_url} />
-                <div className="min-w-0 flex-1">
-                  {/* Linha 1: quem é. Linha 2: o estado da conversa. As ações ficam à direita,
-                      para o cabeçalho não virar uma fileira de botões soltos. */}
-                  <div className="flex items-baseline gap-2 min-w-0">
+                <div className="contents">
+                  <div className="flex items-baseline gap-2 min-w-0 flex-1">
                     <span className="font-semibold text-sm truncate">{activeConv?.nome || active}</span>
                     <span className="hidden @sm:inline text-[11px] text-muted-foreground font-mono shrink-0">{active}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap basis-full order-last md:pl-[50px]">
                     {stages.length > 0 && (
                       <Select
                         value={activeCard?.stage_id || ""}
                         onValueChange={(val) => void handleUpdateStage(val)}
                       >
-                        <SelectTrigger className="h-6 text-[11px] px-2 py-0 rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel-2)] max-w-[130px]">
+                        <SelectTrigger className="h-6 w-auto text-[11px] px-2 py-0 gap-1 rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel-2)] max-w-[150px]">
                           <SelectValue placeholder="Sem etapa" />
                         </SelectTrigger>
                         <SelectContent>
@@ -999,11 +1000,13 @@ function ConversasPage() {
                         value={activeCard?.owner_id || "none"}
                         onValueChange={(val) => void handleAssignOwner(val === "none" ? null : val)}
                       >
-                        <SelectTrigger className="h-6 text-[11px] px-2 py-0 gap-1 rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel-2)] max-w-[150px] [&>svg]:shrink-0">
-                          <span className="flex items-center gap-1 min-w-0 text-xs">
+                        <SelectTrigger className="h-6 w-auto text-[11px] px-2 py-0 gap-1 rounded-full border border-[color:var(--hairline)] bg-[color:var(--panel-2)] max-w-[150px] [&>svg]:shrink-0">
+                          {/* div, não span: o SelectTrigger aplica line-clamp ao primeiro span, e isso
+                              vira "caixa vertical" — o ícone ia para cima e o texto para baixo. */}
+                          <div className="flex items-center gap-1 min-w-0 text-xs">
                             <User className="size-3 text-muted-foreground shrink-0" />
                             <span className="truncate">{nomeCurtoMembro(members.find((m) => m.user_id === activeCard?.owner_id)) || "Responsável"}</span>
-                          </span>
+                          </div>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none" className="text-xs">Sem responsável</SelectItem>
