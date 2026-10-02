@@ -163,6 +163,11 @@ function ConversasPage() {
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [drawerCard, setDrawerCard] = useState<LeadCard | null>(null);
   const [followupCard, setFollowupCard] = useState<LeadCard | null>(null);
+  // Copiloto e respostas rápidas começam recolhidos; quem abre, fica aberto (por navegador).
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+  useEffect(() => {
+    try { setMostrarSugestoes(localStorage.getItem("conv:sugestoes") === "1"); } catch {}
+  }, []);
   const [sending, setSending] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -885,25 +890,31 @@ function ConversasPage() {
               const transferido = !!card?.aguardando_humano;
               const aguardandoHumano = esperaHumano(transferido, resolvida, iaAtiva);
 
+              const stageCor = card?.stage_id ? stages.find((s) => s.id === card.stage_id)?.cor : null;
+              // Linha mais baixa e mais informativa: ponto com a cor da etapa, nome em negrito só
+              // quando há não lidas, prévia sem o rótulo técnico da mídia.
               return (
                 <li key={c.numero}>
                   <button
                     onClick={() => handleSelectConversation(c.numero)}
-                    className={`relative w-full text-left flex gap-3 p-3 border-b border-[color:var(--hairline)] transition-colors ${
+                    className={`relative w-full text-left flex gap-2.5 px-3 py-2.5 border-b border-[color:var(--hairline)] transition-colors ${
                       on ? "bg-[color:var(--brand-soft)]" : "hover:bg-[color:var(--panel-2)]"
                     }`}
                   >
                     {on && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[color:var(--brand)]" />}
-                    <InitialsAvatar name={c.nome || c.numero} size={40} src={card?.foto_url} />
+                    <InitialsAvatar name={c.nome || c.numero} size={36} src={card?.foto_url} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <b className="text-[13.5px] truncate">{c.nome || c.numero}</b>
-                        <span className="ml-auto text-[10.5px] text-muted-foreground whitespace-nowrap">
+                        {stageCor && <span className="size-2 rounded-full shrink-0" style={{ background: stageCor }} title={stages.find((s) => s.id === card?.stage_id)?.nome} />}
+                        <span className={`text-[13px] truncate ${u > 0 ? "font-bold" : "font-semibold"}`}>{c.nome || c.numero}</span>
+                        <span className={`ml-auto text-[10.5px] whitespace-nowrap ${u > 0 ? "text-[color:var(--brand-text)] font-semibold" : "text-muted-foreground"}`}>
                           {new Date(c.last.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-[12.5px] text-muted-foreground truncate flex-1">{c.last.texto}</p>
+                        <p className={`text-[12px] truncate flex-1 ${u > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                          {textoSemMarcadorMidia(c.last.texto).replace(/📝 Transcrição:\s*/g, "").replace(/^🎤 \[(Áudio|Nota de Voz)\]\s*/, "🎤 ")}
+                        </p>
                         {aguardandoHumano ? (
                           <span
                             title={transferido ? `Transferido pela IA: ${card?.transferencia_motivo || "atendimento humano"}` : "Aguardando atendimento humano"}
@@ -1139,7 +1150,9 @@ function ConversasPage() {
                 })}
               </div>
 
-              {/* Quick replies & Copiloto IA */}
+              {/* Copiloto IA e respostas rápidas: recolhidos por padrão atrás do botão ✨ da caixa
+                  de texto. Abertos o tempo todo, eram duas barras roubando altura das mensagens. */}
+              {mostrarSugestoes && (
               <div className="px-4 py-2 border-t border-[color:var(--hairline)] bg-[color:var(--panel)] flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
@@ -1194,6 +1207,7 @@ function ConversasPage() {
                   ))}
                 </div>
               </div>
+              )}
 
               <input
                 ref={fileInputRef}
@@ -1237,6 +1251,33 @@ function ConversasPage() {
                     >
                       <Lock className="size-4" />
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarSugestoes((v) => {
+                          try { localStorage.setItem("conv:sugestoes", v ? "0" : "1"); } catch {}
+                          return !v;
+                        });
+                      }}
+                      title={mostrarSugestoes ? "Esconder Copiloto IA e respostas rápidas" : "Copiloto IA e respostas rápidas"}
+                      className={`p-2 rounded-full transition-colors ${
+                        mostrarSugestoes ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "text-muted-foreground hover:bg-[color:var(--panel-2)]"
+                      }`}
+                    >
+                      <Sparkles className="size-4" />
+                    </button>
+                    {composer.trim() && !mostrarSugestoes && (
+                      <button
+                        type="button"
+                        disabled={polishing}
+                        onClick={() => void handlePolishDraft()}
+                        title="Melhorar o texto com IA"
+                        className="p-2 rounded-full text-purple-600 dark:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
+                      >
+                        {polishing ? <Loader2 className="size-4 animate-spin" /> : <Zap className="size-4" />}
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -1367,54 +1408,53 @@ function ConversasPage() {
         </section>
 
         {/* INFO */}
-        <aside className="hidden xl:flex flex-col gap-4 border-l border-[color:var(--hairline)] p-5 bg-[color:var(--panel)] overflow-auto min-w-0">
+        {/* Painel do contato: cabeçalho compacto (avatar pequeno ao lado do nome, etapa e tags
+            na mesma linha) e a ficha logo abaixo — antes era um formulário comprido que começava
+            com um avatar de 72px e precisava rolar para chegar no que importa. */}
+        <aside className="hidden xl:flex flex-col border-l border-[color:var(--hairline)] bg-[color:var(--panel)] overflow-auto min-w-0">
           {!active ? (
-            <p className="text-xs text-muted-foreground text-center mt-6">Selecione uma conversa para ver os detalhes.</p>
+            <p className="text-xs text-muted-foreground text-center mt-6 px-4">Selecione uma conversa para ver os detalhes.</p>
           ) : (
             <>
-              <div className="flex flex-col items-center text-center gap-2 pb-4 border-b border-[color:var(--hairline)]">
-                <InitialsAvatar name={activeConv?.nome || active} size={72} src={activeCard?.foto_url} />
-                <div className="min-w-0 w-full">
-                  <div className="font-semibold text-sm break-words">{activeConv?.nome || active}</div>
-                  <div className="text-[11.5px] text-muted-foreground font-mono break-all">{active}</div>
-                </div>
-              </div>
-              <div>
-                <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">Etapa CRM</div>
-                {activeStage ? (
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-full ring-1"
-                    style={{ background: `color-mix(in oklab, ${activeStage.cor} 18%, transparent)`, color: activeStage.cor, borderColor: `color-mix(in oklab, ${activeStage.cor} 35%, transparent)` } as any}>
-                    <Sparkles className="size-3.5" /> {activeStage.nome}
-                  </span>
-                ) : <span className="text-xs text-muted-foreground">Sem etapa</span>}
-              </div>
-              {(activeCard?.tags ?? []).length > 0 && (
-                <div>
-                  <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">Tags</div>
-                  <div className="flex flex-wrap gap-1">
-                    {(activeCard?.tags ?? []).map((t) => (
-                      <span key={t} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[color:var(--panel-2)] text-muted-foreground border border-[color:var(--hairline)]">{t}</span>
-                    ))}
+              <div className="px-4 pt-4 pb-3 border-b border-[color:var(--hairline)] space-y-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <InitialsAvatar name={activeConv?.nome || active} size={44} src={activeCard?.foto_url} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-[14px] truncate" title={activeConv?.nome || active}>{activeConv?.nome || active}</div>
+                    <div className="text-[11px] text-muted-foreground font-mono truncate">{active}</div>
                   </div>
+                  {activeCard && (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerCard(activeCard)}
+                      title="Abrir no CRM"
+                      className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]"
+                    >
+                      <ExternalLink className="size-4" />
+                    </button>
+                  )}
                 </div>
-              )}
-              {activeCard?.observacao && (
-                <div>
-                  <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground mb-1.5 font-semibold">Observações</div>
-                  <p className="text-[13px] text-foreground/85 whitespace-pre-wrap">{activeCard.observacao}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {activeStage ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1 rounded-full ring-1"
+                      style={{ background: `color-mix(in oklab, ${activeStage.cor} 18%, transparent)`, color: activeStage.cor, borderColor: `color-mix(in oklab, ${activeStage.cor} 35%, transparent)` } as any}>
+                      {activeStage.nome}
+                    </span>
+                  ) : <span className="text-[11.5px] text-muted-foreground">Sem etapa</span>}
+                  {(activeCard?.tags ?? []).map((t) => (
+                    <span key={t} className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[color:var(--panel-2)] text-muted-foreground border border-[color:var(--hairline)]">#{t}</span>
+                  ))}
                 </div>
-              )}
+                {activeCard?.observacao && (
+                  <p className="text-[12.5px] text-foreground/80 whitespace-pre-wrap border-l-2 border-[color:var(--hairline)] pl-2">{activeCard.observacao}</p>
+                )}
+              </div>
               {companyId && (
-                <div className="pt-3 border-t border-[color:var(--hairline)]">
+                <div className="px-4 py-3">
                   <FichaAtendimento key={active} companyId={companyId} card={activeCard} />
                 </div>
               )}
-              {activeCard && (
-                <Button variant="outline" size="sm" onClick={() => setDrawerCard(activeCard)}>
-                  <ExternalLink className="size-3.5 mr-1.5" /> Abrir no CRM
-                </Button>
-              )}
-              <div className="mt-auto pt-3 border-t border-[color:var(--hairline)] text-[11.5px] text-muted-foreground flex items-center gap-1.5">
+              <div className="mt-auto px-4 py-2 border-t border-[color:var(--hairline)] text-[11px] text-muted-foreground flex items-center gap-1.5">
                 <User className="size-3" /> {thread.length} mensagens nesta conversa
               </div>
             </>
@@ -1824,18 +1864,22 @@ function Bubble({
     );
   }
 
+  // Estilo WhatsApp: bolha de saída clara (tinta leve da marca, texto escuro) em vez do
+  // bloco verde cheio — menos peso visual numa tela que a equipe olha o dia inteiro — e
+  // mais estreita, para a leitura não varrer a largura toda.
   return (
     <div className={`flex ${isOut ? "justify-end" : "justify-start"} ${primeira ? "mt-3 first:mt-0" : "mt-0.5"}`}>
       <div
-        className={`max-w-[min(62ch,78%)] px-3.5 py-2 text-[13.5px] leading-relaxed ${
+        className={`max-w-[min(56ch,72%)] px-3 py-1.5 text-[13.5px] leading-relaxed shadow-sm rounded-xl ${
           isOut
-            ? `bg-[color:var(--brand)] text-primary-foreground font-medium shadow-sm rounded-2xl ${ultima ? "rounded-br-md" : ""}`
-            : `bg-[color:var(--panel)] text-foreground border border-[color:var(--hairline)] shadow-sm rounded-2xl ${ultima ? "rounded-bl-md" : ""}`
+            ? `text-foreground ${ultima ? "rounded-br-sm" : ""}`
+            : `bg-[color:var(--panel)] text-foreground border border-[color:var(--hairline)] ${ultima ? "rounded-bl-sm" : ""}`
         }`}
+        style={isOut ? { background: "color-mix(in oklab, var(--brand) 16%, var(--panel))" } : undefined}
       >
         {isOut && primeira && (
-          <span className="block text-[9.5px] font-bold opacity-80 mb-1 uppercase tracking-wider">
-            {ia ? "⚡ Agente IA" : "Atendente"}
+          <span className="block text-[10px] font-semibold text-[color:var(--brand-text)] mb-0.5">
+            {ia ? "✨ Lia · IA" : "Atendente"}
           </span>
         )}
 
@@ -1895,7 +1939,7 @@ function Bubble({
           </button>
         )}
         {ultima && (
-          <div className={`text-[10.5px] mt-1 flex items-center gap-1 ${isOut ? "opacity-80 justify-end" : "text-muted-foreground"}`}>
+          <div className={`text-[10px] mt-0.5 flex items-center gap-1 text-muted-foreground ${isOut ? "justify-end" : ""}`}>
             {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
             {isOut && m.status_entrega && <DeliveryTick status={m.status_entrega} />}
           </div>
@@ -1906,8 +1950,8 @@ function Bubble({
 }
 
 function DeliveryTick({ status }: { status: string }) {
-  if (status === "falhou") return <span title="Falha no envio" className="text-red-200">⚠</span>;
-  if (status === "lido") return <span title="Lido" className="text-sky-200 font-semibold">✓✓</span>;
+  if (status === "falhou") return <span title="Falha no envio" className="text-red-500">⚠</span>;
+  if (status === "lido") return <span title="Lido" className="text-sky-500 font-semibold">✓✓</span>;
   if (status === "entregue") return <span title="Entregue">✓✓</span>;
   return <span title="Enviado">✓</span>;
 }
