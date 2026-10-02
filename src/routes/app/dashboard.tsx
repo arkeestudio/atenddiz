@@ -3,7 +3,7 @@ import { HelpTip } from "@/components/help-tip";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { brand } from "@/config/brand";
-import { Bot, MessageCircle, AlertTriangle, Clock, UserPlus, DollarSign, Hand, CalendarCheck, TrendingDown, Trophy } from "lucide-react";
+import { Bot, MessageCircle, AlertTriangle, Clock, UserPlus, DollarSign, Hand, CalendarCheck, TrendingDown, Trophy, CalendarDays } from "lucide-react";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { MessageTimeline, type TimelineItem } from "@/components/dashboard/message-timeline";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,33 @@ function Dashboard() {
   const [aguardando, setAguardando] = useState<Pendencia[]>([]);
   const [paradas, setParadas] = useState<Pendencia[]>([]);
   const [followups, setFollowups] = useState<Pendencia[]>([]);
+  const [visitas, setVisitas] = useState<Pendencia[]>([]);
   const [iaModelo, setIaModelo] = useState<string>("Gemini 2.5 Flash");
+
+  // Próximas visitas (7 dias): o que a IA marcou precisa estar à vista sem abrir conversa.
+  useEffect(() => {
+    if (!companyId) return;
+    void (async () => {
+      const agora = new Date();
+      const { data } = await (supabase as any)
+        .from("agendamento")
+        .select("id, titulo, inicio, crm_cards(nome, nome_whatsapp, numero)")
+        .eq("company_id", companyId)
+        .eq("status", "agendado")
+        .gte("inicio", agora.toISOString())
+        .lte("inicio", new Date(agora.getTime() + 7 * 86400000).toISOString())
+        .order("inicio", { ascending: true })
+        .limit(12);
+      const fmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      setVisitas(((data ?? []) as any[]).map((r) => ({
+        id: r.id,
+        numero: r.crm_cards?.numero ?? "",
+        nome: r.crm_cards?.nome || r.crm_cards?.nome_whatsapp || null,
+        detalhe: fmt.format(new Date(r.inicio)).replace(",", ""),
+        urgencia: Math.round((+new Date(r.inicio) - Date.now()) / 60000),
+      })));
+    })();
+  }, [companyId]);
   const [creditos, setCreditos] = useState<number | null>(null);
 
   const range = useMemo(() => periodRange(period, from, to), [period, from, to]);
@@ -224,6 +250,36 @@ function Dashboard() {
               para="/app/planilha"
             />
           </div>
+        )}
+      </div>
+
+      {/* 1b. Próximas visitas — o que a IA marcou nos próximos 7 dias */}
+      <div className="rounded-2xl border border-[color:var(--hairline)] bg-[color:var(--panel)] p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CalendarDays className={`size-4 ${visitas.length ? "text-[color:var(--brand-text)]" : "text-muted-foreground"}`} />
+            <h3 className="font-display text-[17px] font-semibold">Próximas visitas</h3>
+            <span className="text-[11.5px] text-muted-foreground whitespace-nowrap">7 dias</span>
+          </div>
+          <Button asChild variant="outline" size="sm"><Link to="/app/agenda">Abrir agenda →</Link></Button>
+        </div>
+        {visitas.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground py-4 text-center">Nenhuma visita marcada para os próximos 7 dias.</p>
+        ) : (
+          <ul className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {visitas.slice(0, 6).map((v) => (
+              <li key={v.id}>
+                <Link
+                  to="/app/conversas"
+                  search={{ numero: v.numero } as any}
+                  className="flex items-center gap-3 rounded-xl border border-[color:var(--hairline)] bg-[color:var(--panel-2)] px-3 py-2 hover:bg-[color:var(--panel)] transition"
+                >
+                  <span className="text-[12px] font-semibold tabular-nums text-[color:var(--brand-text)] whitespace-nowrap">{v.detalhe}</span>
+                  <span className="truncate text-[13px]">{v.nome || v.numero}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

@@ -9,103 +9,64 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TrocarSenhaRouteImport } from './routes/trocar-senha'
-import { Route as TermosRouteImport } from './routes/termos'
-import { Route as ResetSenhaRouteImport } from './routes/reset-senha'
-import { Route as ReembolsoRouteImport } from './routes/reembolso'
-import { Route as PrivacidadeRouteImport } from './routes/privacidade'
-import { Route as MasterRouteImport } from './routes/master'
-import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
-import { Route as EntrarRouteImport } from './routes/entrar'
-import { Route as DemoRouteImport } from './routes/demo'
-import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as MasterIndexRouteImport } from './routes/master/index'
-import { Route as DemoIndexRouteImport } from './routes/demo/index'
-import { Route as MasterPlanosRouteImport } from './routes/master/planos'
-import { Route as MasterPainelRouteImport } from './routes/master/painel'
-import { Route as MasterNovaEmpresaRouteImport } from './routes/master/nova-empresa'
-import { Route as MasterEmpresasRouteImport } from './routes/master/empresas'
-import { Route as MasterConfiguracoesRouteImport } from './routes/master/configuracoes'
-import { Route as MasterAssinaturasRouteImport } from './routes/master/assinaturas'
-import { Route as DemoRelatoriosRouteImport } from './routes/demo/relatorios'
-import { Route as DemoIntegracoesRouteImport } from './routes/demo/integracoes'
-import { Route as DemoFinanceiroRouteImport } from './routes/demo/financeiro'
-import { Route as DemoEquipeRouteImport } from './routes/demo/equipe'
-import { Route as DemoDashboardRouteImport } from './routes/demo/dashboard'
-import { Route as DemoCrmRouteImport } from './routes/demo/crm'
-import { Route as DemoConversasRouteImport } from './routes/demo/conversas'
-import { Route as DemoContatosRouteImport } from './routes/demo/contatos'
-import { Route as DemoConfiguracoesRouteImport } from './routes/demo/configuracoes'
-import { Route as DemoConexaoRouteImport } from './routes/demo/conexao'
-import { Route as DemoCampanhasRouteImport } from './routes/demo/campanhas'
-import { Route as DemoAgenteRouteImport } from './routes/demo/agente'
-import { Route as CsatTokenRouteImport } from './routes/csat.$token'
-import { Route as AppRelatoriosRouteImport } from './routes/app/relatorios'
-import { Route as AppPlanilhaRouteImport } from './routes/app/planilha'
-import { Route as AppOnboardingRouteImport } from './routes/app/onboarding'
-import { Route as AppIntegracoesRouteImport } from './routes/app/integracoes'
-import { Route as AppFinanceiroRouteImport } from './routes/app/financeiro'
-import { Route as AppEquipeRouteImport } from './routes/app/equipe'
-import { Route as AppDashboardRouteImport } from './routes/app/dashboard'
-import { Route as AppCrmRouteImport } from './routes/app/crm'
-import { Route as AppConversasRouteImport } from './routes/app/conversas'
-import { Route as AppContatosRouteImport } from './routes/app/contatos'
-import { Route as AppConfiguracoesRouteImport } from './routes/app/configuracoes'
-import { Route as AppConexaoRouteImport } from './routes/app/conexao'
-import { Route as AppCheckoutRouteImport } from './routes/app/checkout'
-import { Route as AppCampanhasRouteImport } from './routes/app/campanhas'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as DemoRouteImport } from './routes/demo'
+import { Route as EntrarRouteImport } from './routes/entrar'
+import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
+import { Route as MasterRouteImport } from './routes/master'
+import { Route as PrivacidadeRouteImport } from './routes/privacidade'
+import { Route as ReembolsoRouteImport } from './routes/reembolso'
+import { Route as ResetSenhaRouteImport } from './routes/reset-senha'
+import { Route as TermosRouteImport } from './routes/termos'
+import { Route as TrocarSenhaRouteImport } from './routes/trocar-senha'
+import { Route as AppAgendaRouteImport } from './routes/app/agenda'
 import { Route as AppAgenteRouteImport } from './routes/app/agente'
-import { Route as AppAgenteAvancadoRouteImport } from './routes/app/agente.avancado'
-import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
+import { Route as AppCampanhasRouteImport } from './routes/app/campanhas'
+import { Route as AppCheckoutRouteImport } from './routes/app/checkout'
+import { Route as AppConexaoRouteImport } from './routes/app/conexao'
+import { Route as AppConfiguracoesRouteImport } from './routes/app/configuracoes'
+import { Route as AppContatosRouteImport } from './routes/app/contatos'
+import { Route as AppConversasRouteImport } from './routes/app/conversas'
+import { Route as AppCrmRouteImport } from './routes/app/crm'
+import { Route as AppDashboardRouteImport } from './routes/app/dashboard'
+import { Route as AppEquipeRouteImport } from './routes/app/equipe'
+import { Route as AppFinanceiroRouteImport } from './routes/app/financeiro'
+import { Route as AppIntegracoesRouteImport } from './routes/app/integracoes'
+import { Route as AppOnboardingRouteImport } from './routes/app/onboarding'
+import { Route as AppPlanilhaRouteImport } from './routes/app/planilha'
+import { Route as AppRelatoriosRouteImport } from './routes/app/relatorios'
+import { Route as CsatTokenRouteImport } from './routes/csat.$token'
+import { Route as DemoIndexRouteImport } from './routes/demo/index'
+import { Route as DemoAgenteRouteImport } from './routes/demo/agente'
+import { Route as DemoCampanhasRouteImport } from './routes/demo/campanhas'
+import { Route as DemoConexaoRouteImport } from './routes/demo/conexao'
+import { Route as DemoConfiguracoesRouteImport } from './routes/demo/configuracoes'
+import { Route as DemoContatosRouteImport } from './routes/demo/contatos'
+import { Route as DemoConversasRouteImport } from './routes/demo/conversas'
+import { Route as DemoCrmRouteImport } from './routes/demo/crm'
+import { Route as DemoDashboardRouteImport } from './routes/demo/dashboard'
+import { Route as DemoEquipeRouteImport } from './routes/demo/equipe'
+import { Route as DemoFinanceiroRouteImport } from './routes/demo/financeiro'
+import { Route as DemoIntegracoesRouteImport } from './routes/demo/integracoes'
+import { Route as DemoRelatoriosRouteImport } from './routes/demo/relatorios'
+import { Route as MasterIndexRouteImport } from './routes/master/index'
+import { Route as MasterAssinaturasRouteImport } from './routes/master/assinaturas'
+import { Route as MasterConfiguracoesRouteImport } from './routes/master/configuracoes'
+import { Route as MasterEmpresasRouteImport } from './routes/master/empresas'
+import { Route as MasterNovaEmpresaRouteImport } from './routes/master/nova-empresa'
+import { Route as MasterPainelRouteImport } from './routes/master/painel'
+import { Route as MasterPlanosRouteImport } from './routes/master/planos'
 import { Route as ApiPublicGoogleCallbackRouteImport } from './routes/api/public/google-callback'
-import { Route as ApiPublicV1SplatRouteImport } from './routes/api/public/v1/$'
-import { Route as ApiPublicHooksProcessCampaignsRouteImport } from './routes/api/public/hooks/process-campaigns'
+import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
+import { Route as AppAgenteAvancadoRouteImport } from './routes/app/agente.avancado'
 import { Route as ApiPublicBillingWebhookRouteImport } from './routes/api/public/billing/webhook'
+import { Route as ApiPublicHooksProcessCampaignsRouteImport } from './routes/api/public/hooks/process-campaigns'
+import { Route as ApiPublicV1SplatRouteImport } from './routes/api/public/v1/$'
 
-const TrocarSenhaRoute = TrocarSenhaRouteImport.update({
-  id: '/trocar-senha',
-  path: '/trocar-senha',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TermosRoute = TermosRouteImport.update({
-  id: '/termos',
-  path: '/termos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ResetSenhaRoute = ResetSenhaRouteImport.update({
-  id: '/reset-senha',
-  path: '/reset-senha',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReembolsoRoute = ReembolsoRouteImport.update({
-  id: '/reembolso',
-  path: '/reembolso',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacidadeRoute = PrivacidadeRouteImport.update({
-  id: '/privacidade',
-  path: '/privacidade',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MasterRoute = MasterRouteImport.update({
-  id: '/master',
-  path: '/master',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
-  id: '/esqueci-senha',
-  path: '/esqueci-senha',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EntrarRoute = EntrarRouteImport.update({
-  id: '/entrar',
-  path: '/entrar',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DemoRoute = DemoRouteImport.update({
-  id: '/demo',
-  path: '/demo',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -113,184 +74,54 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MasterIndexRoute = MasterIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => MasterRoute,
-} as any)
-const DemoIndexRoute = DemoIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => DemoRoute,
-} as any)
-const MasterPlanosRoute = MasterPlanosRouteImport.update({
-  id: '/planos',
-  path: '/planos',
-  getParentRoute: () => MasterRoute,
-} as any)
-const MasterPainelRoute = MasterPainelRouteImport.update({
-  id: '/painel',
-  path: '/painel',
-  getParentRoute: () => MasterRoute,
-} as any)
-const MasterNovaEmpresaRoute = MasterNovaEmpresaRouteImport.update({
-  id: '/nova-empresa',
-  path: '/nova-empresa',
-  getParentRoute: () => MasterRoute,
-} as any)
-const MasterEmpresasRoute = MasterEmpresasRouteImport.update({
-  id: '/empresas',
-  path: '/empresas',
-  getParentRoute: () => MasterRoute,
-} as any)
-const MasterConfiguracoesRoute = MasterConfiguracoesRouteImport.update({
-  id: '/configuracoes',
-  path: '/configuracoes',
-  getParentRoute: () => MasterRoute,
-} as any)
-const MasterAssinaturasRoute = MasterAssinaturasRouteImport.update({
-  id: '/assinaturas',
-  path: '/assinaturas',
-  getParentRoute: () => MasterRoute,
-} as any)
-const DemoRelatoriosRoute = DemoRelatoriosRouteImport.update({
-  id: '/relatorios',
-  path: '/relatorios',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoIntegracoesRoute = DemoIntegracoesRouteImport.update({
-  id: '/integracoes',
-  path: '/integracoes',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoFinanceiroRoute = DemoFinanceiroRouteImport.update({
-  id: '/financeiro',
-  path: '/financeiro',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoEquipeRoute = DemoEquipeRouteImport.update({
-  id: '/equipe',
-  path: '/equipe',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoDashboardRoute = DemoDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoCrmRoute = DemoCrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoConversasRoute = DemoConversasRouteImport.update({
-  id: '/conversas',
-  path: '/conversas',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoContatosRoute = DemoContatosRouteImport.update({
-  id: '/contatos',
-  path: '/contatos',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoConfiguracoesRoute = DemoConfiguracoesRouteImport.update({
-  id: '/configuracoes',
-  path: '/configuracoes',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoConexaoRoute = DemoConexaoRouteImport.update({
-  id: '/conexao',
-  path: '/conexao',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoCampanhasRoute = DemoCampanhasRouteImport.update({
-  id: '/campanhas',
-  path: '/campanhas',
-  getParentRoute: () => DemoRoute,
-} as any)
-const DemoAgenteRoute = DemoAgenteRouteImport.update({
-  id: '/agente',
-  path: '/agente',
-  getParentRoute: () => DemoRoute,
-} as any)
-const CsatTokenRoute = CsatTokenRouteImport.update({
-  id: '/csat/$token',
-  path: '/csat/$token',
+const EntrarRoute = EntrarRouteImport.update({
+  id: '/entrar',
+  path: '/entrar',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRelatoriosRoute = AppRelatoriosRouteImport.update({
-  id: '/relatorios',
-  path: '/relatorios',
-  getParentRoute: () => AppRoute,
+const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
+  id: '/esqueci-senha',
+  path: '/esqueci-senha',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppPlanilhaRoute = AppPlanilhaRouteImport.update({
-  id: '/planilha',
-  path: '/planilha',
-  getParentRoute: () => AppRoute,
+const MasterRoute = MasterRouteImport.update({
+  id: '/master',
+  path: '/master',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppOnboardingRoute = AppOnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => AppRoute,
+const PrivacidadeRoute = PrivacidadeRouteImport.update({
+  id: '/privacidade',
+  path: '/privacidade',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppIntegracoesRoute = AppIntegracoesRouteImport.update({
-  id: '/integracoes',
-  path: '/integracoes',
-  getParentRoute: () => AppRoute,
+const ReembolsoRoute = ReembolsoRouteImport.update({
+  id: '/reembolso',
+  path: '/reembolso',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppFinanceiroRoute = AppFinanceiroRouteImport.update({
-  id: '/financeiro',
-  path: '/financeiro',
-  getParentRoute: () => AppRoute,
+const ResetSenhaRoute = ResetSenhaRouteImport.update({
+  id: '/reset-senha',
+  path: '/reset-senha',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppEquipeRoute = AppEquipeRouteImport.update({
-  id: '/equipe',
-  path: '/equipe',
-  getParentRoute: () => AppRoute,
+const TermosRoute = TermosRouteImport.update({
+  id: '/termos',
+  path: '/termos',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppDashboardRoute = AppDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AppRoute,
+const TrocarSenhaRoute = TrocarSenhaRouteImport.update({
+  id: '/trocar-senha',
+  path: '/trocar-senha',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppCrmRoute = AppCrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppConversasRoute = AppConversasRouteImport.update({
-  id: '/conversas',
-  path: '/conversas',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppContatosRoute = AppContatosRouteImport.update({
-  id: '/contatos',
-  path: '/contatos',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
-  id: '/configuracoes',
-  path: '/configuracoes',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppConexaoRoute = AppConexaoRouteImport.update({
-  id: '/conexao',
-  path: '/conexao',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppCheckoutRoute = AppCheckoutRouteImport.update({
-  id: '/checkout',
-  path: '/checkout',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppCampanhasRoute = AppCampanhasRouteImport.update({
-  id: '/campanhas',
-  path: '/campanhas',
+const AppAgendaRoute = AppAgendaRouteImport.update({
+  id: '/agenda',
+  path: '/agenda',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAgenteRoute = AppAgenteRouteImport.update({
@@ -298,10 +129,185 @@ const AppAgenteRoute = AppAgenteRouteImport.update({
   path: '/agente',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAgenteAvancadoRoute = AppAgenteAvancadoRouteImport.update({
-  id: '/avancado',
-  path: '/avancado',
-  getParentRoute: () => AppAgenteRoute,
+const AppCampanhasRoute = AppCampanhasRouteImport.update({
+  id: '/campanhas',
+  path: '/campanhas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCheckoutRoute = AppCheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConexaoRoute = AppConexaoRouteImport.update({
+  id: '/conexao',
+  path: '/conexao',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConfiguracoesRoute = AppConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppContatosRoute = AppContatosRouteImport.update({
+  id: '/contatos',
+  path: '/contatos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConversasRoute = AppConversasRouteImport.update({
+  id: '/conversas',
+  path: '/conversas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCrmRoute = AppCrmRouteImport.update({
+  id: '/crm',
+  path: '/crm',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEquipeRoute = AppEquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFinanceiroRoute = AppFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIntegracoesRoute = AppIntegracoesRouteImport.update({
+  id: '/integracoes',
+  path: '/integracoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOnboardingRoute = AppOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlanilhaRoute = AppPlanilhaRouteImport.update({
+  id: '/planilha',
+  path: '/planilha',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRelatoriosRoute = AppRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AppRoute,
+} as any)
+const CsatTokenRoute = CsatTokenRouteImport.update({
+  id: '/csat/$token',
+  path: '/csat/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DemoIndexRoute = DemoIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoAgenteRoute = DemoAgenteRouteImport.update({
+  id: '/agente',
+  path: '/agente',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoCampanhasRoute = DemoCampanhasRouteImport.update({
+  id: '/campanhas',
+  path: '/campanhas',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoConexaoRoute = DemoConexaoRouteImport.update({
+  id: '/conexao',
+  path: '/conexao',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoConfiguracoesRoute = DemoConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoContatosRoute = DemoContatosRouteImport.update({
+  id: '/contatos',
+  path: '/contatos',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoConversasRoute = DemoConversasRouteImport.update({
+  id: '/conversas',
+  path: '/conversas',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoCrmRoute = DemoCrmRouteImport.update({
+  id: '/crm',
+  path: '/crm',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoDashboardRoute = DemoDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoEquipeRoute = DemoEquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoFinanceiroRoute = DemoFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoIntegracoesRoute = DemoIntegracoesRouteImport.update({
+  id: '/integracoes',
+  path: '/integracoes',
+  getParentRoute: () => DemoRoute,
+} as any)
+const DemoRelatoriosRoute = DemoRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => DemoRoute,
+} as any)
+const MasterIndexRoute = MasterIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MasterRoute,
+} as any)
+const MasterAssinaturasRoute = MasterAssinaturasRouteImport.update({
+  id: '/assinaturas',
+  path: '/assinaturas',
+  getParentRoute: () => MasterRoute,
+} as any)
+const MasterConfiguracoesRoute = MasterConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => MasterRoute,
+} as any)
+const MasterEmpresasRoute = MasterEmpresasRouteImport.update({
+  id: '/empresas',
+  path: '/empresas',
+  getParentRoute: () => MasterRoute,
+} as any)
+const MasterNovaEmpresaRoute = MasterNovaEmpresaRouteImport.update({
+  id: '/nova-empresa',
+  path: '/nova-empresa',
+  getParentRoute: () => MasterRoute,
+} as any)
+const MasterPainelRoute = MasterPainelRouteImport.update({
+  id: '/painel',
+  path: '/painel',
+  getParentRoute: () => MasterRoute,
+} as any)
+const MasterPlanosRoute = MasterPlanosRouteImport.update({
+  id: '/planos',
+  path: '/planos',
+  getParentRoute: () => MasterRoute,
+} as any)
+const ApiPublicGoogleCallbackRoute = ApiPublicGoogleCallbackRouteImport.update({
+  id: '/api/public/google-callback',
+  path: '/api/public/google-callback',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
@@ -309,14 +315,14 @@ const ApiPublicWhatsappWebhookRoute =
     path: '/api/public/whatsapp-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicGoogleCallbackRoute = ApiPublicGoogleCallbackRouteImport.update({
-  id: '/api/public/google-callback',
-  path: '/api/public/google-callback',
-  getParentRoute: () => rootRouteImport,
+const AppAgenteAvancadoRoute = AppAgenteAvancadoRouteImport.update({
+  id: '/avancado',
+  path: '/avancado',
+  getParentRoute: () => AppAgenteRoute,
 } as any)
-const ApiPublicV1SplatRoute = ApiPublicV1SplatRouteImport.update({
-  id: '/api/public/v1/$',
-  path: '/api/public/v1/$',
+const ApiPublicBillingWebhookRoute = ApiPublicBillingWebhookRouteImport.update({
+  id: '/api/public/billing/webhook',
+  path: '/api/public/billing/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicHooksProcessCampaignsRoute =
@@ -325,9 +331,9 @@ const ApiPublicHooksProcessCampaignsRoute =
     path: '/api/public/hooks/process-campaigns',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicBillingWebhookRoute = ApiPublicBillingWebhookRouteImport.update({
-  id: '/api/public/billing/webhook',
-  path: '/api/public/billing/webhook',
+const ApiPublicV1SplatRoute = ApiPublicV1SplatRouteImport.update({
+  id: '/api/public/v1/$',
+  path: '/api/public/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -343,6 +349,7 @@ export interface FileRoutesByFullPath {
   '/reset-senha': typeof ResetSenhaRoute
   '/termos': typeof TermosRoute
   '/trocar-senha': typeof TrocarSenhaRoute
+  '/app/agenda': typeof AppAgendaRoute
   '/app/agente': typeof AppAgenteRouteWithChildren
   '/app/campanhas': typeof AppCampanhasRoute
   '/app/checkout': typeof AppCheckoutRoute
@@ -396,6 +403,7 @@ export interface FileRoutesByTo {
   '/reset-senha': typeof ResetSenhaRoute
   '/termos': typeof TermosRoute
   '/trocar-senha': typeof TrocarSenhaRoute
+  '/app/agenda': typeof AppAgendaRoute
   '/app/agente': typeof AppAgenteRouteWithChildren
   '/app/campanhas': typeof AppCampanhasRoute
   '/app/checkout': typeof AppCheckoutRoute
@@ -452,6 +460,7 @@ export interface FileRoutesById {
   '/reset-senha': typeof ResetSenhaRoute
   '/termos': typeof TermosRoute
   '/trocar-senha': typeof TrocarSenhaRoute
+  '/app/agenda': typeof AppAgendaRoute
   '/app/agente': typeof AppAgenteRouteWithChildren
   '/app/campanhas': typeof AppCampanhasRoute
   '/app/checkout': typeof AppCheckoutRoute
@@ -509,6 +518,7 @@ export interface FileRouteTypes {
     | '/reset-senha'
     | '/termos'
     | '/trocar-senha'
+    | '/app/agenda'
     | '/app/agente'
     | '/app/campanhas'
     | '/app/checkout'
@@ -562,6 +572,7 @@ export interface FileRouteTypes {
     | '/reset-senha'
     | '/termos'
     | '/trocar-senha'
+    | '/app/agenda'
     | '/app/agente'
     | '/app/campanhas'
     | '/app/checkout'
@@ -617,6 +628,7 @@ export interface FileRouteTypes {
     | '/reset-senha'
     | '/termos'
     | '/trocar-senha'
+    | '/app/agenda'
     | '/app/agente'
     | '/app/campanhas'
     | '/app/checkout'
@@ -683,67 +695,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/trocar-senha': {
-      id: '/trocar-senha'
-      path: '/trocar-senha'
-      fullPath: '/trocar-senha'
-      preLoaderRoute: typeof TrocarSenhaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/termos': {
-      id: '/termos'
-      path: '/termos'
-      fullPath: '/termos'
-      preLoaderRoute: typeof TermosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-senha': {
-      id: '/reset-senha'
-      path: '/reset-senha'
-      fullPath: '/reset-senha'
-      preLoaderRoute: typeof ResetSenhaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reembolso': {
-      id: '/reembolso'
-      path: '/reembolso'
-      fullPath: '/reembolso'
-      preLoaderRoute: typeof ReembolsoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacidade': {
-      id: '/privacidade'
-      path: '/privacidade'
-      fullPath: '/privacidade'
-      preLoaderRoute: typeof PrivacidadeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/master': {
-      id: '/master'
-      path: '/master'
-      fullPath: '/master'
-      preLoaderRoute: typeof MasterRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/esqueci-senha': {
-      id: '/esqueci-senha'
-      path: '/esqueci-senha'
-      fullPath: '/esqueci-senha'
-      preLoaderRoute: typeof EsqueciSenhaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/entrar': {
-      id: '/entrar'
-      path: '/entrar'
-      fullPath: '/entrar'
-      preLoaderRoute: typeof EntrarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo': {
-      id: '/demo'
-      path: '/demo'
-      fullPath: '/demo'
-      preLoaderRoute: typeof DemoRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -753,256 +709,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/master/': {
-      id: '/master/'
-      path: '/'
-      fullPath: '/master/'
-      preLoaderRoute: typeof MasterIndexRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/demo/': {
-      id: '/demo/'
-      path: '/'
-      fullPath: '/demo/'
-      preLoaderRoute: typeof DemoIndexRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/master/planos': {
-      id: '/master/planos'
-      path: '/planos'
-      fullPath: '/master/planos'
-      preLoaderRoute: typeof MasterPlanosRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/master/painel': {
-      id: '/master/painel'
-      path: '/painel'
-      fullPath: '/master/painel'
-      preLoaderRoute: typeof MasterPainelRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/master/nova-empresa': {
-      id: '/master/nova-empresa'
-      path: '/nova-empresa'
-      fullPath: '/master/nova-empresa'
-      preLoaderRoute: typeof MasterNovaEmpresaRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/master/empresas': {
-      id: '/master/empresas'
-      path: '/empresas'
-      fullPath: '/master/empresas'
-      preLoaderRoute: typeof MasterEmpresasRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/master/configuracoes': {
-      id: '/master/configuracoes'
-      path: '/configuracoes'
-      fullPath: '/master/configuracoes'
-      preLoaderRoute: typeof MasterConfiguracoesRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/master/assinaturas': {
-      id: '/master/assinaturas'
-      path: '/assinaturas'
-      fullPath: '/master/assinaturas'
-      preLoaderRoute: typeof MasterAssinaturasRouteImport
-      parentRoute: typeof MasterRoute
-    }
-    '/demo/relatorios': {
-      id: '/demo/relatorios'
-      path: '/relatorios'
-      fullPath: '/demo/relatorios'
-      preLoaderRoute: typeof DemoRelatoriosRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/integracoes': {
-      id: '/demo/integracoes'
-      path: '/integracoes'
-      fullPath: '/demo/integracoes'
-      preLoaderRoute: typeof DemoIntegracoesRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/financeiro': {
-      id: '/demo/financeiro'
-      path: '/financeiro'
-      fullPath: '/demo/financeiro'
-      preLoaderRoute: typeof DemoFinanceiroRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/equipe': {
-      id: '/demo/equipe'
-      path: '/equipe'
-      fullPath: '/demo/equipe'
-      preLoaderRoute: typeof DemoEquipeRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/dashboard': {
-      id: '/demo/dashboard'
-      path: '/dashboard'
-      fullPath: '/demo/dashboard'
-      preLoaderRoute: typeof DemoDashboardRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/crm': {
-      id: '/demo/crm'
-      path: '/crm'
-      fullPath: '/demo/crm'
-      preLoaderRoute: typeof DemoCrmRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/conversas': {
-      id: '/demo/conversas'
-      path: '/conversas'
-      fullPath: '/demo/conversas'
-      preLoaderRoute: typeof DemoConversasRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/contatos': {
-      id: '/demo/contatos'
-      path: '/contatos'
-      fullPath: '/demo/contatos'
-      preLoaderRoute: typeof DemoContatosRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/configuracoes': {
-      id: '/demo/configuracoes'
-      path: '/configuracoes'
-      fullPath: '/demo/configuracoes'
-      preLoaderRoute: typeof DemoConfiguracoesRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/conexao': {
-      id: '/demo/conexao'
-      path: '/conexao'
-      fullPath: '/demo/conexao'
-      preLoaderRoute: typeof DemoConexaoRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/campanhas': {
-      id: '/demo/campanhas'
-      path: '/campanhas'
-      fullPath: '/demo/campanhas'
-      preLoaderRoute: typeof DemoCampanhasRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/demo/agente': {
-      id: '/demo/agente'
-      path: '/agente'
-      fullPath: '/demo/agente'
-      preLoaderRoute: typeof DemoAgenteRouteImport
-      parentRoute: typeof DemoRoute
-    }
-    '/csat/$token': {
-      id: '/csat/$token'
-      path: '/csat/$token'
-      fullPath: '/csat/$token'
-      preLoaderRoute: typeof CsatTokenRouteImport
+    '/entrar': {
+      id: '/entrar'
+      path: '/entrar'
+      fullPath: '/entrar'
+      preLoaderRoute: typeof EntrarRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/relatorios': {
-      id: '/app/relatorios'
-      path: '/relatorios'
-      fullPath: '/app/relatorios'
-      preLoaderRoute: typeof AppRelatoriosRouteImport
-      parentRoute: typeof AppRoute
+    '/esqueci-senha': {
+      id: '/esqueci-senha'
+      path: '/esqueci-senha'
+      fullPath: '/esqueci-senha'
+      preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/planilha': {
-      id: '/app/planilha'
-      path: '/planilha'
-      fullPath: '/app/planilha'
-      preLoaderRoute: typeof AppPlanilhaRouteImport
-      parentRoute: typeof AppRoute
+    '/master': {
+      id: '/master'
+      path: '/master'
+      fullPath: '/master'
+      preLoaderRoute: typeof MasterRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/onboarding': {
-      id: '/app/onboarding'
-      path: '/onboarding'
-      fullPath: '/app/onboarding'
-      preLoaderRoute: typeof AppOnboardingRouteImport
-      parentRoute: typeof AppRoute
+    '/privacidade': {
+      id: '/privacidade'
+      path: '/privacidade'
+      fullPath: '/privacidade'
+      preLoaderRoute: typeof PrivacidadeRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/integracoes': {
-      id: '/app/integracoes'
-      path: '/integracoes'
-      fullPath: '/app/integracoes'
-      preLoaderRoute: typeof AppIntegracoesRouteImport
-      parentRoute: typeof AppRoute
+    '/reembolso': {
+      id: '/reembolso'
+      path: '/reembolso'
+      fullPath: '/reembolso'
+      preLoaderRoute: typeof ReembolsoRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/financeiro': {
-      id: '/app/financeiro'
-      path: '/financeiro'
-      fullPath: '/app/financeiro'
-      preLoaderRoute: typeof AppFinanceiroRouteImport
-      parentRoute: typeof AppRoute
+    '/reset-senha': {
+      id: '/reset-senha'
+      path: '/reset-senha'
+      fullPath: '/reset-senha'
+      preLoaderRoute: typeof ResetSenhaRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/equipe': {
-      id: '/app/equipe'
-      path: '/equipe'
-      fullPath: '/app/equipe'
-      preLoaderRoute: typeof AppEquipeRouteImport
-      parentRoute: typeof AppRoute
+    '/termos': {
+      id: '/termos'
+      path: '/termos'
+      fullPath: '/termos'
+      preLoaderRoute: typeof TermosRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/dashboard': {
-      id: '/app/dashboard'
-      path: '/dashboard'
-      fullPath: '/app/dashboard'
-      preLoaderRoute: typeof AppDashboardRouteImport
-      parentRoute: typeof AppRoute
+    '/trocar-senha': {
+      id: '/trocar-senha'
+      path: '/trocar-senha'
+      fullPath: '/trocar-senha'
+      preLoaderRoute: typeof TrocarSenhaRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/app/crm': {
-      id: '/app/crm'
-      path: '/crm'
-      fullPath: '/app/crm'
-      preLoaderRoute: typeof AppCrmRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/conversas': {
-      id: '/app/conversas'
-      path: '/conversas'
-      fullPath: '/app/conversas'
-      preLoaderRoute: typeof AppConversasRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/contatos': {
-      id: '/app/contatos'
-      path: '/contatos'
-      fullPath: '/app/contatos'
-      preLoaderRoute: typeof AppContatosRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/configuracoes': {
-      id: '/app/configuracoes'
-      path: '/configuracoes'
-      fullPath: '/app/configuracoes'
-      preLoaderRoute: typeof AppConfiguracoesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/conexao': {
-      id: '/app/conexao'
-      path: '/conexao'
-      fullPath: '/app/conexao'
-      preLoaderRoute: typeof AppConexaoRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/checkout': {
-      id: '/app/checkout'
-      path: '/checkout'
-      fullPath: '/app/checkout'
-      preLoaderRoute: typeof AppCheckoutRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/campanhas': {
-      id: '/app/campanhas'
-      path: '/campanhas'
-      fullPath: '/app/campanhas'
-      preLoaderRoute: typeof AppCampanhasRouteImport
+    '/app/agenda': {
+      id: '/app/agenda'
+      path: '/agenda'
+      fullPath: '/app/agenda'
+      preLoaderRoute: typeof AppAgendaRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/agente': {
@@ -1012,19 +786,250 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgenteRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/agente/avancado': {
-      id: '/app/agente/avancado'
-      path: '/avancado'
-      fullPath: '/app/agente/avancado'
-      preLoaderRoute: typeof AppAgenteAvancadoRouteImport
-      parentRoute: typeof AppAgenteRoute
+    '/app/campanhas': {
+      id: '/app/campanhas'
+      path: '/campanhas'
+      fullPath: '/app/campanhas'
+      preLoaderRoute: typeof AppCampanhasRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/api/public/whatsapp-webhook': {
-      id: '/api/public/whatsapp-webhook'
-      path: '/api/public/whatsapp-webhook'
-      fullPath: '/api/public/whatsapp-webhook'
-      preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
+    '/app/checkout': {
+      id: '/app/checkout'
+      path: '/checkout'
+      fullPath: '/app/checkout'
+      preLoaderRoute: typeof AppCheckoutRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/conexao': {
+      id: '/app/conexao'
+      path: '/conexao'
+      fullPath: '/app/conexao'
+      preLoaderRoute: typeof AppConexaoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/configuracoes': {
+      id: '/app/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/app/configuracoes'
+      preLoaderRoute: typeof AppConfiguracoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/contatos': {
+      id: '/app/contatos'
+      path: '/contatos'
+      fullPath: '/app/contatos'
+      preLoaderRoute: typeof AppContatosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/conversas': {
+      id: '/app/conversas'
+      path: '/conversas'
+      fullPath: '/app/conversas'
+      preLoaderRoute: typeof AppConversasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/crm': {
+      id: '/app/crm'
+      path: '/crm'
+      fullPath: '/app/crm'
+      preLoaderRoute: typeof AppCrmRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/dashboard': {
+      id: '/app/dashboard'
+      path: '/dashboard'
+      fullPath: '/app/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/equipe': {
+      id: '/app/equipe'
+      path: '/equipe'
+      fullPath: '/app/equipe'
+      preLoaderRoute: typeof AppEquipeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/financeiro': {
+      id: '/app/financeiro'
+      path: '/financeiro'
+      fullPath: '/app/financeiro'
+      preLoaderRoute: typeof AppFinanceiroRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/integracoes': {
+      id: '/app/integracoes'
+      path: '/integracoes'
+      fullPath: '/app/integracoes'
+      preLoaderRoute: typeof AppIntegracoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/onboarding': {
+      id: '/app/onboarding'
+      path: '/onboarding'
+      fullPath: '/app/onboarding'
+      preLoaderRoute: typeof AppOnboardingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/planilha': {
+      id: '/app/planilha'
+      path: '/planilha'
+      fullPath: '/app/planilha'
+      preLoaderRoute: typeof AppPlanilhaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/relatorios': {
+      id: '/app/relatorios'
+      path: '/relatorios'
+      fullPath: '/app/relatorios'
+      preLoaderRoute: typeof AppRelatoriosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/csat/$token': {
+      id: '/csat/$token'
+      path: '/csat/$token'
+      fullPath: '/csat/$token'
+      preLoaderRoute: typeof CsatTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/demo/': {
+      id: '/demo/'
+      path: '/'
+      fullPath: '/demo/'
+      preLoaderRoute: typeof DemoIndexRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/agente': {
+      id: '/demo/agente'
+      path: '/agente'
+      fullPath: '/demo/agente'
+      preLoaderRoute: typeof DemoAgenteRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/campanhas': {
+      id: '/demo/campanhas'
+      path: '/campanhas'
+      fullPath: '/demo/campanhas'
+      preLoaderRoute: typeof DemoCampanhasRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/conexao': {
+      id: '/demo/conexao'
+      path: '/conexao'
+      fullPath: '/demo/conexao'
+      preLoaderRoute: typeof DemoConexaoRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/configuracoes': {
+      id: '/demo/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/demo/configuracoes'
+      preLoaderRoute: typeof DemoConfiguracoesRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/contatos': {
+      id: '/demo/contatos'
+      path: '/contatos'
+      fullPath: '/demo/contatos'
+      preLoaderRoute: typeof DemoContatosRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/conversas': {
+      id: '/demo/conversas'
+      path: '/conversas'
+      fullPath: '/demo/conversas'
+      preLoaderRoute: typeof DemoConversasRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/crm': {
+      id: '/demo/crm'
+      path: '/crm'
+      fullPath: '/demo/crm'
+      preLoaderRoute: typeof DemoCrmRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/dashboard': {
+      id: '/demo/dashboard'
+      path: '/dashboard'
+      fullPath: '/demo/dashboard'
+      preLoaderRoute: typeof DemoDashboardRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/equipe': {
+      id: '/demo/equipe'
+      path: '/equipe'
+      fullPath: '/demo/equipe'
+      preLoaderRoute: typeof DemoEquipeRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/financeiro': {
+      id: '/demo/financeiro'
+      path: '/financeiro'
+      fullPath: '/demo/financeiro'
+      preLoaderRoute: typeof DemoFinanceiroRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/integracoes': {
+      id: '/demo/integracoes'
+      path: '/integracoes'
+      fullPath: '/demo/integracoes'
+      preLoaderRoute: typeof DemoIntegracoesRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/demo/relatorios': {
+      id: '/demo/relatorios'
+      path: '/relatorios'
+      fullPath: '/demo/relatorios'
+      preLoaderRoute: typeof DemoRelatoriosRouteImport
+      parentRoute: typeof DemoRoute
+    }
+    '/master/': {
+      id: '/master/'
+      path: '/'
+      fullPath: '/master/'
+      preLoaderRoute: typeof MasterIndexRouteImport
+      parentRoute: typeof MasterRoute
+    }
+    '/master/assinaturas': {
+      id: '/master/assinaturas'
+      path: '/assinaturas'
+      fullPath: '/master/assinaturas'
+      preLoaderRoute: typeof MasterAssinaturasRouteImport
+      parentRoute: typeof MasterRoute
+    }
+    '/master/configuracoes': {
+      id: '/master/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/master/configuracoes'
+      preLoaderRoute: typeof MasterConfiguracoesRouteImport
+      parentRoute: typeof MasterRoute
+    }
+    '/master/empresas': {
+      id: '/master/empresas'
+      path: '/empresas'
+      fullPath: '/master/empresas'
+      preLoaderRoute: typeof MasterEmpresasRouteImport
+      parentRoute: typeof MasterRoute
+    }
+    '/master/nova-empresa': {
+      id: '/master/nova-empresa'
+      path: '/nova-empresa'
+      fullPath: '/master/nova-empresa'
+      preLoaderRoute: typeof MasterNovaEmpresaRouteImport
+      parentRoute: typeof MasterRoute
+    }
+    '/master/painel': {
+      id: '/master/painel'
+      path: '/painel'
+      fullPath: '/master/painel'
+      preLoaderRoute: typeof MasterPainelRouteImport
+      parentRoute: typeof MasterRoute
+    }
+    '/master/planos': {
+      id: '/master/planos'
+      path: '/planos'
+      fullPath: '/master/planos'
+      preLoaderRoute: typeof MasterPlanosRouteImport
+      parentRoute: typeof MasterRoute
     }
     '/api/public/google-callback': {
       id: '/api/public/google-callback'
@@ -1033,11 +1038,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicGoogleCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/v1/$': {
-      id: '/api/public/v1/$'
-      path: '/api/public/v1/$'
-      fullPath: '/api/public/v1/$'
-      preLoaderRoute: typeof ApiPublicV1SplatRouteImport
+    '/api/public/whatsapp-webhook': {
+      id: '/api/public/whatsapp-webhook'
+      path: '/api/public/whatsapp-webhook'
+      fullPath: '/api/public/whatsapp-webhook'
+      preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/agente/avancado': {
+      id: '/app/agente/avancado'
+      path: '/avancado'
+      fullPath: '/app/agente/avancado'
+      preLoaderRoute: typeof AppAgenteAvancadoRouteImport
+      parentRoute: typeof AppAgenteRoute
+    }
+    '/api/public/billing/webhook': {
+      id: '/api/public/billing/webhook'
+      path: '/api/public/billing/webhook'
+      fullPath: '/api/public/billing/webhook'
+      preLoaderRoute: typeof ApiPublicBillingWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/process-campaigns': {
@@ -1047,11 +1066,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksProcessCampaignsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/billing/webhook': {
-      id: '/api/public/billing/webhook'
-      path: '/api/public/billing/webhook'
-      fullPath: '/api/public/billing/webhook'
-      preLoaderRoute: typeof ApiPublicBillingWebhookRouteImport
+    '/api/public/v1/$': {
+      id: '/api/public/v1/$'
+      path: '/api/public/v1/$'
+      fullPath: '/api/public/v1/$'
+      preLoaderRoute: typeof ApiPublicV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -1070,6 +1089,7 @@ const AppAgenteRouteWithChildren = AppAgenteRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppAgendaRoute: typeof AppAgendaRoute
   AppAgenteRoute: typeof AppAgenteRouteWithChildren
   AppCampanhasRoute: typeof AppCampanhasRoute
   AppCheckoutRoute: typeof AppCheckoutRoute
@@ -1088,6 +1108,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAgendaRoute: AppAgendaRoute,
   AppAgenteRoute: AppAgenteRouteWithChildren,
   AppCampanhasRoute: AppCampanhasRoute,
   AppCheckoutRoute: AppCheckoutRoute,

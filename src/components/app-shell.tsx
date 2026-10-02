@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   LayoutDashboard, Bot, KanbanSquare, Table2, LogOut, Smartphone, Shield,
   Inbox, Users, BarChart3, Settings, Contact, Zap, MessageCircle, Megaphone, Webhook, Wallet,
-  ChevronsLeft, ChevronsRight,
+  ChevronsLeft, ChevronsRight, CalendarDays,
 } from "lucide-react";
 
 // Barra lateral recolhida (só ícones) libera ~190px para a área de trabalho — faz diferença
@@ -35,6 +35,7 @@ const sections: { label: string; items: NavItem[] }[] = [
       { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/app/conversas", label: "Conversas", icon: Inbox, badge: true },
       { to: "/app/crm", label: "CRM Kanban", icon: KanbanSquare },
+      { to: "/app/agenda", label: "Agenda", icon: CalendarDays },
       { to: "/app/planilha", label: "Planilha de Leads", icon: Table2 },
       { to: "/app/campanhas", label: "Campanhas", icon: Megaphone, adminOnly: true },
       { to: "/app/agente", label: "Agente IA", icon: Bot, tag: "IA", adminOnly: true },
