@@ -1,4 +1,4 @@
-import { normalizeFichaCampos } from "./ficha-campos";
+import { campoSegmento, normalizeFichaCampos } from "./ficha-campos";
 
 export interface ProdutoBrief {
   nome: string;
@@ -379,7 +379,10 @@ Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma
       : "",
     "TRANSBORDO HUMANO: Se o cliente pedir atendimento humano, reclamar de algo delicado ou precisar de algo que você não pode resolver, avise educadamente que vai chamar alguém da equipe e inclua o marcador [ENCAMINHAR_HUMANO: motivo curto] na resposta. A equipe recebe no sistema a ficha com o resumo da conversa.",
     fichaCampos.length
-      ? `INFORMAÇÕES QUE A EQUIPE PRECISA (ficha do atendimento): ao longo da conversa, descubra com naturalidade, uma pergunta por vez e só quando fizer sentido (nunca em formato de questionário): ${fichaCampos.map((f) => f.label).join("; ")}. Não pergunte de novo o que o cliente já contou.`
+      ? `INFORMAÇÕES QUE A EQUIPE PRECISA (ficha do atendimento): ao longo da conversa, descubra com naturalidade, uma pergunta por vez e só quando fizer sentido (nunca em formato de questionário): ${fichaCampos
+          .filter((f) => !f.somenteEquipe)
+          .map((f) => (f.opcoes?.length ? `${f.label} (uma destas: ${f.opcoes.join(" / ")})` : f.label))
+          .join("; ")}. Não pergunte de novo o que o cliente já contou.`
       : "",
     `MÉTODO DE ATENDIMENTO (siga sempre):
 1. Cumprimente com naturalidade só na PRIMEIRA mensagem da conversa. Depois NÃO repita saudação.
@@ -446,6 +449,18 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
     }
   }
 
+  // Segmento do lead: a IA classifica assim que sabe idade/série, e o sistema grava na hora
+  // (não espera a atualização da ficha). É o que faz "esse lead é de Fundamental 1" aparecer
+  // na conversa, na lista e no Kanban enquanto a conversa ainda está acontecendo.
+  const segmentoCampo = campoSegmento(fichaCampos);
+  if (segmentoCampo) {
+    blocos.push(
+      `SEGMENTO DO LEAD: assim que souber a idade ou a série da criança, escreva em uma nova linha, exatamente:
+[SEGMENTO: ${segmentoCampo.opcoes!.join(" | ")}]
+escolhendo UMA opção, a que corresponde à criança. Repita o marcador em toda resposta enquanto souber. Marcador interno, NÃO aparece para o cliente. Se ainda não souber, não escreva. Família com filhos em segmentos diferentes: use o da criança sobre a qual estão falando agora.`,
+    );
+  }
+
   blocos.push(
     `AO FINAL DA RESPOSTA, em uma nova linha, escreva exatamente:
 [ESTAGIO: ${stageNames}]
@@ -479,12 +494,23 @@ export function parseAiOutput(
   fotoUrl: string | null;
   pixValor: number | null;
   encaminharHumano: string | null;
+  /** O que a IA escreveu em [SEGMENTO: ...], ainda sem casar com as opções da empresa. */
+  segmento: string | null;
 } {
   let text = raw || "";
   let stage: string | null = null;
   let agendar: AgendarBrief | null = null;
   let fotoUrl: string | null = null;
   let encaminharHumano: string | null = null;
+  let segmento: string | null = null;
+
+  // Pode vir repetido (o prompt pede em toda resposta): fica o último e some do texto.
+  const segMatches = Array.from(text.matchAll(/\[\s*SEGMENTO\s*:\s*([^\]]+)\]/gi));
+  if (segMatches.length) {
+    segmento = segMatches[segMatches.length - 1][1].trim() || null;
+    for (const m of segMatches) text = text.replace(m[0], "");
+    text = text.trim();
+  }
 
   const handoverMatch = text.match(/\[\s*(?:ENCAMINHAR_HUMANO|TRANSBORDO|TRANSFERIR_HUMANO)\s*:\s*([^\]]+)\]/i);
   if (handoverMatch) {
@@ -540,7 +566,7 @@ export function parseAiOutput(
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
     .slice(0, 3);
-  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano };
+  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento };
 }
 
 export function classifyStagePromptInstruction(): string {

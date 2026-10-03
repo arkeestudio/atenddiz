@@ -11,8 +11,9 @@ import {
   Hand, MessageSquareText, Send, Sparkles, User, Search, Bot, ExternalLink, RotateCcw,
   Star, Mic, Paperclip, Lock, Square, FileText, X, Zap, Tag, Plus, Check,
   Loader2, Trash2, CreditCard, Copy, Image as ImageIcon, Volume2, AlertCircle, ClipboardList,
-  Clock, MoreVertical, ArrowLeft
+  Clock, MoreVertical, ArrowLeft, GraduationCap
 } from "lucide-react";
+import { abreviaSegmento, estiloSegmento, valorSegmento } from "@/lib/ficha-campos";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -908,6 +909,14 @@ function ConversasPage() {
                       <div className="flex items-center gap-1.5">
                         {stageCor && <span className="size-2 rounded-full shrink-0" style={{ background: stageCor }} title={stages.find((s) => s.id === card?.stage_id)?.nome} />}
                         <span className={`text-[13px] truncate ${u > 0 ? "font-bold" : "font-semibold"}`}>{c.nome || c.numero}</span>
+                        {valorSegmento(card?.ficha) && (
+                          <span
+                            title={valorSegmento(card?.ficha)!}
+                            className={`shrink-0 text-[9.5px] font-bold px-1.5 py-px rounded border leading-tight ${estiloSegmento(valorSegmento(card?.ficha)!)}`}
+                          >
+                            {abreviaSegmento(valorSegmento(card?.ficha)!)}
+                          </span>
+                        )}
                         <span className={`ml-auto text-[10.5px] whitespace-nowrap ${u > 0 ? "text-[color:var(--brand-text)] font-semibold" : "text-muted-foreground"}`}>
                           {new Date(c.last.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </span>
@@ -1018,6 +1027,15 @@ function ConversasPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    )}
+                    {/* Segmento identificado pela IA (ficha). É a resposta a "esse lead é de quê?" sem abrir nada. */}
+                    {valorSegmento(activeCard?.ficha) && (
+                      <span
+                        title="Segmento identificado pela IA — edite na ficha se estiver errado"
+                        className={`inline-flex items-center gap-1 h-6 px-2 rounded-full border text-[11px] font-semibold ${estiloSegmento(valorSegmento(activeCard?.ficha)!)}`}
+                      >
+                        <GraduationCap className="size-3" /> {valorSegmento(activeCard?.ficha)}
+                      </span>
                     )}
                     {janela && (
                       <span

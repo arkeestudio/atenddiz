@@ -205,12 +205,25 @@ export function FichaAtendimento({
         campos.map((c) => (
           <div key={c.id} className="space-y-1">
             <Label className="text-[11px]">{c.label}</Label>
-            <Input
-              value={valores[c.id] ?? ""}
-              onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}
-              placeholder={c.dica || "—"}
-              className="h-8 text-[12.5px]"
-            />
+            {c.tipo === "opcoes" && c.opcoes?.length ? (
+              // Campo de opções: seletor, para a equipe corrigir sem digitar variação.
+              <select
+                value={valores[c.id] ?? ""}
+                onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}
+                className="h-8 w-full rounded-md border border-input bg-[color:var(--panel)] px-2 text-[12.5px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">—</option>
+                {c.opcoes.map((o) => <option key={o} value={o}>{o}</option>)}
+                {valores[c.id] && !c.opcoes.includes(valores[c.id]) && <option value={valores[c.id]}>{valores[c.id]} (fora da lista)</option>}
+              </select>
+            ) : (
+              <Input
+                value={valores[c.id] ?? ""}
+                onChange={(e) => setValores((v) => ({ ...v, [c.id]: e.target.value }))}
+                placeholder={c.dica || "—"}
+                className="h-8 text-[12.5px]"
+              />
+            )}
           </div>
         ))
       )}

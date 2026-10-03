@@ -32,6 +32,7 @@
   "horarios_disponiveis": "segunda a sexta, das 9h às 17h",
   "antecedencia_min": "1 dia",
   "ficha_campos": [
+    { "id": "segmento", "label": "Segmento", "tipo": "opcoes", "opcoes": ["Berçário", "Educação Infantil", "Fundamental 1", "Fundamental 2"], "dica": "Pela idade ou série da criança" },
     { "id": "responsavel", "label": "Nome do responsável" },
     { "id": "crianca", "label": "Nome da criança" },
     { "id": "idade", "label": "Idade ou série da criança" },

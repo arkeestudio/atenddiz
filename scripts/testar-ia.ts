@@ -13,6 +13,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSystemPrompt, parseAiOutput, type AgentConfig, type StageBrief } from "../src/lib/ai-prompt";
+import { SEGMENTO_PADRAO, normalizarOpcao } from "../src/lib/ficha-campos";
 import { lovableAiChat, type ChatMsg } from "../src/lib/lovable-ai.server";
 
 // ---------------------------------------------------------------- .env sem dependência
@@ -189,6 +190,31 @@ const TESTES: Teste[] = [
     nome: "conversa: nao repete saudacao na 2a mensagem",
     msgs: ["oi, boa tarde", "é para o meu filho de 3 anos"],
     checar: (r) => (/^\s*(oi|olá|ola|bom dia|boa tarde|boa noite)\b/i.test(r.texto) ? `começou com saudação de novo: "${r.texto.slice(0, 40)}…"` : null),
+  },
+  {
+    nome: "segmento: 8 anos vira Fundamental 1",
+    msgs: ["oi! quero matricular meu filho, ele tem 8 anos e está no 3º ano"],
+    checar: (r) => {
+      const op = r.segmento ? normalizarOpcao(r.segmento, SEGMENTO_PADRAO.opcoes!) : null;
+      if (!r.segmento) return "não emitiu [SEGMENTO] mesmo sabendo a idade e a série";
+      if (op !== "Fundamental 1") return `classificou como "${r.segmento}" em vez de Fundamental 1`;
+      return null;
+    },
+  },
+  {
+    nome: "segmento: bebe de 6 meses vira Bercario",
+    msgs: ["bom dia, minha bebê tem 6 meses, vocês têm vaga?"],
+    checar: (r) => {
+      const op = r.segmento ? normalizarOpcao(r.segmento, SEGMENTO_PADRAO.opcoes!) : null;
+      if (!r.segmento) return "não emitiu [SEGMENTO] mesmo sabendo a idade";
+      if (op !== "Berçário") return `classificou como "${r.segmento}" em vez de Berçário`;
+      return null;
+    },
+  },
+  {
+    nome: "segmento: sem idade, nao chuta",
+    msgs: ["oi, queria informações sobre a escola"],
+    checar: (r) => (r.segmento ? `chutou "${r.segmento}" sem saber a idade` : null),
   },
   {
     nome: "crm: toda resposta traz [ESTAGIO] valido",

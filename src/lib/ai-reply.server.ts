@@ -191,7 +191,7 @@ export async function runAiReply(opts: {
     console.error("[ai]", e?.message);
   }
 
-  const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
+  const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
   const finalParts = sanitizeAiParts(responderEmPartes ? parts : [parts.join(" ")]);
 
   // Gera PIX Copia e Cola instantâneo se a IA definiu valor de pagamento
@@ -430,6 +430,41 @@ export async function runAiReply(opts: {
     },
   );
 
+  // Segmento do lead gravado na hora, na ficha do card. Só vale se casar com uma opção real
+  // da empresa — a IA não cria categoria nova. Troca de segmento no meio da conversa (a
+  // família passou a falar do outro filho) é aceita: a ficha reflete o assunto atual.
+  let segmentoAplicado: string | null = null;
+  if (segmento) {
+    try {
+      const { normalizeFichaCampos, campoSegmento, normalizarOpcao } = await import("@/lib/ficha-campos");
+      const campoSeg = campoSegmento(normalizeFichaCampos(cfg?.ficha_campos));
+      const opcao = campoSeg ? normalizarOpcao(segmento, campoSeg.opcoes!) : null;
+      if (campoSeg && opcao) {
+        const { data: atual } = await supabaseAdmin
+          .from("crm_cards").select("id, ficha").eq("company_id", companyId).eq("numero", number).maybeSingle();
+        const fichaAtual = (atual as any)?.ficha && typeof (atual as any).ficha === "object" ? (atual as any).ficha : {};
+        if (fichaAtual[campoSeg.id] !== opcao) {
+          await supabaseAdmin
+            .from("crm_cards")
+            .update({ ficha: { ...fichaAtual, [campoSeg.id]: opcao } } as any)
+            .eq("company_id", companyId)
+            .eq("numero", number);
+          if ((atual as any)?.id) {
+            await supabaseAdmin.from("lead_evento").insert({
+              company_id: companyId, card_id: (atual as any).id, tipo: "segmento",
+              descricao: fichaAtual[campoSeg.id] ? `Segmento mudou de ${fichaAtual[campoSeg.id]} para ${opcao}` : `Segmento identificado: ${opcao}`,
+            });
+          }
+        }
+        segmentoAplicado = opcao;
+      } else if (segmento) {
+        console.warn("[segmento] IA escreveu fora das opções:", segmento);
+      }
+    } catch (e: any) {
+      console.warn("[segmento] não gravou:", e?.message);
+    }
+  }
+
   // Contato novo: busca nome e foto de perfil depois que o card existe.
   const { sincronizarPerfilContato } = await import("@/lib/contato-perfil.server");
   await sincronizarPerfilContato({ admin: supabaseAdmin, companyId, instanceName, numero: number });
@@ -445,6 +480,7 @@ export async function runAiReply(opts: {
       const pedacos = [
         `${finalParts.length} bolha(s), ${modelChoice.replace(/^google\//, "")}, ${segundos}s`,
         stage ? `etapa: ${stage}` : "sem etapa",
+        segmentoAplicado ? `segmento: ${segmentoAplicado}` : null,
         agendaResultado ? `agenda: ${agendaResultado}` : null,
         vozResultado ? `voz: ${vozResultado}` : null,
         encaminharHumano ? `transferiu: ${encaminharHumano}` : null,

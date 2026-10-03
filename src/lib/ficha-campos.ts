@@ -9,9 +9,25 @@ export type FichaCampo = {
   // por uma pessoa: se a IA puder escrever aqui, ela inventa número — e número errado
   // sobre dinheiro, dito em nome da escola, é o pior tipo de erro.
   somenteEquipe?: boolean;
+  // "opcoes": a IA escolhe UMA entre as opções e a equipe corrige num seletor. É o que
+  // permite classificar sem texto livre — "Fundamental 1" nunca vira "fund. I" ou "1º ano".
+  tipo?: "texto" | "opcoes";
+  opcoes?: string[];
+};
+
+// Para que segmento é este lead. A IA preenche assim que sabe a idade/série e o sistema
+// mostra na conversa, na lista, no Kanban e na planilha. O instituto é um; o atendimento
+// precisa saber se está falando de berçário ou de fundamental.
+export const SEGMENTO_PADRAO: FichaCampo = {
+  id: "segmento",
+  label: "Segmento",
+  tipo: "opcoes",
+  opcoes: ["Berçário", "Educação Infantil", "Fundamental 1", "Fundamental 2"],
+  dica: "Pela idade ou série da criança",
 };
 
 export const FICHA_CAMPOS_PADRAO: FichaCampo[] = [
+  SEGMENTO_PADRAO,
   { id: "responsavel", label: "Nome do responsável", dica: "Mãe, pai ou quem está conversando" },
   { id: "crianca", label: "Nome da criança" },
   { id: "nascimento", label: "Data de nascimento", dica: "Só se a família disser. Ex: 03/2026" },
@@ -38,9 +54,59 @@ export function normalizeFichaCampos(raw: unknown): FichaCampo[] {
     seen.add(id);
     const dica = String((item as any)?.dica ?? "").trim();
     const somenteEquipe = (item as any)?.somenteEquipe === true;
-    campos.push({ id, label, ...(dica ? { dica } : {}), ...(somenteEquipe ? { somenteEquipe } : {}) });
+    const opcoes = Array.isArray((item as any)?.opcoes)
+      ? Array.from(new Set(((item as any).opcoes as unknown[]).map((o) => String(o ?? "").trim()).filter(Boolean)))
+      : [];
+    campos.push({
+      id,
+      label,
+      ...(dica ? { dica } : {}),
+      ...(somenteEquipe ? { somenteEquipe } : {}),
+      ...(opcoes.length ? { tipo: "opcoes" as const, opcoes } : {}),
+    });
   }
   return campos;
+}
+
+/** O campo que classifica o lead por segmento, se a empresa tiver um (id "segmento" ou rótulo com "segmento"). */
+export function campoSegmento(campos: FichaCampo[]): FichaCampo | null {
+  return campos.find((c) => c.tipo === "opcoes" && c.opcoes?.length && (c.id === "segmento" || /segmento/i.test(c.label))) ?? null;
+}
+
+/** Valor do segmento gravado na ficha de um lead, sem precisar da configuração. */
+export function valorSegmento(ficha: Record<string, string> | null | undefined): string | null {
+  if (!ficha) return null;
+  const direto = ficha.segmento?.trim();
+  if (direto) return direto;
+  const chave = Object.keys(ficha).find((k) => /segmento/i.test(k));
+  return chave && ficha[chave]?.trim() ? ficha[chave].trim() : null;
+}
+
+/** Casa o que a IA escreveu com uma opção real (ignora caixa, aceita começo). Null se não bater. */
+export function normalizarOpcao(valor: string, opcoes: string[]): string | null {
+  const v = valor.trim().toLowerCase();
+  if (!v) return null;
+  return (
+    opcoes.find((o) => o.toLowerCase() === v) ??
+    opcoes.find((o) => o.toLowerCase().startsWith(v) || v.startsWith(o.toLowerCase())) ??
+    null
+  );
+}
+
+// Etiqueta curta e cor estável por segmento — a lista de conversas não tem espaço para
+// "Educação Infantil" por extenso ao lado do nome.
+export function abreviaSegmento(v: string): string {
+  if (/ber[cç]/i.test(v)) return "Berç.";
+  if (/infantil/i.test(v)) return "Ed. Inf.";
+  if (/fund/i.test(v)) return v.replace(/fundamental/i, "Fund.").replace(/\s+/g, " ").trim();
+  return v.length > 10 ? `${v.slice(0, 9)}…` : v;
+}
+export function estiloSegmento(v: string): string {
+  if (/ber[cç]/i.test(v)) return "bg-pink-500/12 text-pink-700 dark:text-pink-300 border-pink-500/30";
+  if (/infantil/i.test(v)) return "bg-amber-500/12 text-amber-700 dark:text-amber-300 border-amber-500/30";
+  if (/fund.*1/i.test(v)) return "bg-sky-500/12 text-sky-700 dark:text-sky-300 border-sky-500/30";
+  if (/fund.*2/i.test(v)) return "bg-violet-500/12 text-violet-700 dark:text-violet-300 border-violet-500/30";
+  return "bg-[color:var(--panel-2)] text-muted-foreground border-[color:var(--hairline)]";
 }
 
 export function slugCampo(label: string): string {

@@ -74,7 +74,11 @@ export async function atualizarFichaComIa(opts: {
   // ela não tem como saber e inventaria número em nome da escola.
   const camposIa = campos.filter((c) => !c.somenteEquipe);
   const camposTxt = camposIa
-    .map((c) => `- "${c.id}": ${c.label}${c.dica ? ` (${c.dica})` : ""} — valor atual: ${JSON.stringify(atual[c.id] ?? "")}`)
+    .map((c) =>
+      `- "${c.id}": ${c.label}${c.dica ? ` (${c.dica})` : ""}` +
+      (c.opcoes?.length ? ` — escolha UMA exatamente como escrita: ${c.opcoes.join(" / ")}` : "") +
+      ` — valor atual: ${JSON.stringify(atual[c.id] ?? "")}`,
+    )
     .join("\n");
 
   const system = `Você organiza a ficha de atendimento de um contato do WhatsApp para a equipe humana.

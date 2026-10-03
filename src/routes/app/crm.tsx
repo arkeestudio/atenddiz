@@ -15,6 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { toast } from "sonner";
 import { Plus, MoreVertical, Sparkles, Pencil, Trash2, Palette, Send, Zap, Loader2, Search, Layers, X, AlertCircle, CalendarClock } from "lucide-react";
+import { abreviaSegmento, estiloSegmento, valorSegmento } from "@/lib/ficha-campos";
 import { brand } from "@/config/brand";
 import { LeadDrawer, type LeadCard, type Stage, type StageTipo, type Member } from "@/components/crm/lead-drawer";
 import { MOTIVOS_PERDA, labelMotivoPerda } from "@/lib/motivos-perda";
@@ -499,6 +500,15 @@ function CardBody({ card, dragging }: { card: LeadCard; dragging?: boolean }) {
           <div className="text-[14px] font-semibold truncate text-foreground leading-tight">{card.nome || card.nome_whatsapp || card.numero}</div>
           <div className="text-[11px] text-muted-foreground font-mono truncate mt-0.5">{card.numero}</div>
         </div>
+        {/* Segmento identificado pela IA: no Kanban é o que diz "berçário ou fundamental?" de relance. */}
+        {valorSegmento(card.ficha) && (
+          <span
+            title={`Segmento: ${valorSegmento(card.ficha)}`}
+            className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${estiloSegmento(valorSegmento(card.ficha)!)}`}
+          >
+            {abreviaSegmento(valorSegmento(card.ficha)!)}
+          </span>
+        )}
       </div>
       {card.ultima_mensagem && (
         <p className="text-muted-foreground text-[12.5px] mt-2.5 line-clamp-2 leading-relaxed bg-[var(--panel)]/40 p-2 rounded-lg border border-[var(--border)]/40">

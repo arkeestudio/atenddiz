@@ -15,7 +15,7 @@ import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, Refr
 import { brand } from "@/config/brand";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { testAiReply } from "@/lib/evolution.functions";
-import { FICHA_CAMPOS_PADRAO, normalizeFichaCampos, novoIdCampo, type FichaCampo } from "@/lib/ficha-campos";
+import { FICHA_CAMPOS_PADRAO, SEGMENTO_PADRAO, campoSegmento, normalizeFichaCampos, novoIdCampo, type FichaCampo } from "@/lib/ficha-campos";
 import { MODOS_VOZ, VOZES, VOZ_PADRAO, type ModoVoz } from "@/lib/voz.shared";
 import { generateAgentConfig, analyzeBusinessBrief, type BriefQuestion } from "@/lib/agent-ai.functions";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
@@ -619,8 +619,18 @@ function AgentePage() {
                 {fichaCampos.length === 0 && (
                   <p className="text-xs text-muted-foreground">Nenhum campo: a ficha terá só o resumo e o próximo passo.</p>
                 )}
+                {!campoSegmento(fichaCampos) && (
+                  <button
+                    type="button"
+                    onClick={() => setFichaCampos((cs) => [SEGMENTO_PADRAO, ...cs.filter((c) => c.id !== SEGMENTO_PADRAO.id)])}
+                    className="w-full text-left rounded-xl border border-dashed border-[var(--brand)]/40 bg-[var(--brand-soft)]/40 px-3 py-2 text-xs hover:bg-[var(--brand-soft)]"
+                  >
+                    <b>+ Adicionar campo "Segmento"</b> — a IA identifica se o lead é de Berçário, Educação Infantil,
+                    Fundamental 1 ou 2 e o sistema mostra isso na conversa, na lista e no Kanban. Você pode editar as opções.
+                  </button>
+                )}
                 {fichaCampos.map((c, i) => (
-                  <div key={c.id} className="flex flex-col sm:flex-row gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2">
+                  <div key={c.id} className="flex flex-col sm:flex-row sm:flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2">
                     <Input
                       value={c.label}
                       onChange={(e) => updCampo(i, { label: e.target.value })}
@@ -633,7 +643,19 @@ function AgentePage() {
                       placeholder="Dica para a IA (opcional)"
                       className="text-xs flex-1"
                     />
-                    <div className="flex gap-1 justify-end">
+                    {/* Opções fixas: preenchido, o campo vira um seletor e a IA só escolhe entre elas.
+                        Não controlado de propósito: separar por vírgula enquanto digita apagaria a vírgula. */}
+                    <Input
+                      key={`${c.id}-opcoes`}
+                      defaultValue={c.opcoes?.join(", ") ?? ""}
+                      onBlur={(e) => {
+                        const opcoes = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        updCampo(i, opcoes.length ? { tipo: "opcoes", opcoes } : { tipo: undefined, opcoes: undefined });
+                      }}
+                      placeholder="Opções fixas, separadas por vírgula (opcional) — ex: Berçário, Fundamental 1"
+                      className="text-xs sm:basis-full"
+                    />
+                    <div className="flex gap-1 justify-end sm:ml-auto">
                       <Button type="button" size="icon" variant="ghost" className="size-8" onClick={() => moveCampo(i, -1)} disabled={i === 0} title="Subir">
                         <ArrowUp className="size-3.5" />
                       </Button>
