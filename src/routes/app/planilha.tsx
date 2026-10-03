@@ -123,8 +123,10 @@ function PlanilhaPage() {
     setRascunho(c.ficha?.[campo] ?? "");
   }
 
-  async function confirmar(c: Card, campo: string) {
-    const novo = rascunho.trim();
+  // `valor` explícito é para o seletor de opções: o estado `rascunho` ainda não atualizou
+  // quando o onChange dispara, e esperar o blur num select é confuso para quem usa.
+  async function confirmar(c: Card, campo: string, valor?: string) {
+    const novo = (valor ?? rascunho).trim();
     setEditando(null);
     if (novo === (c.ficha?.[campo] ?? "").trim()) return;
     const ficha = { ...(c.ficha ?? {}), [campo]: novo };
@@ -266,7 +268,21 @@ function PlanilhaPage() {
                           onClick={() => !edit && abrirEdicao(c, campo.id)}
                           className="px-3 py-2 align-middle cursor-text hover:bg-[color:var(--brand-soft)]/40 max-w-[280px]"
                         >
-                          {edit ? (
+                          {edit && campo.tipo === "opcoes" && campo.opcoes?.length ? (
+                            // Campo com opções fixas: lista suspensa, salva ao escolher.
+                            <select
+                              autoFocus
+                              value={rascunho}
+                              onChange={(e) => void confirmar(c, campo.id, e.target.value)}
+                              onBlur={() => setEditando(null)}
+                              onKeyDown={(e) => { if (e.key === "Escape") setEditando(null); }}
+                              className="w-full min-w-[160px] h-8 bg-[color:var(--panel)] outline-none border border-[color:var(--brand)] rounded-md px-2 text-[13px]"
+                            >
+                              <option value="">—</option>
+                              {campo.opcoes.map((o) => <option key={o} value={o}>{o}</option>)}
+                              {rascunho && !campo.opcoes.includes(rascunho) && <option value={rascunho}>{rascunho} (fora da lista)</option>}
+                            </select>
+                          ) : edit ? (
                             // Textarea: campo longo (ex.: "Dúvidas e preocupações") precisa caber
                             // enquanto se edita. Enter salva; Shift+Enter quebra linha.
                             <textarea
