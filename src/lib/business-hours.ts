@@ -7,7 +7,51 @@ export type BusinessHours = {
   enabled: boolean;
   timezone: string;
   dias: Record<string, DaySchedule>;
+  // O que acontece fora do horário:
+  // - "bloquear" (padrão): manda a mensagem de ausência e a IA não responde.
+  // - "atender": a IA continua atendendo e coletando a ficha, não marca nada para "agora"
+  //   e, quando o assunto depende da equipe, combina o retorno para a próxima abertura.
+  modo_fora?: "bloquear" | "atender";
 };
+
+// Deslocamento do fuso naquele instante, ex.: "-03:00". Sem biblioteca de datas.
+function offsetDe(tz: string, date: Date): string {
+  try {
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" }).formatToParts(date);
+    const o = (p.find((x) => x.type === "timeZoneName")?.value ?? "GMT").replace("GMT", "");
+    return o === "" ? "+00:00" : o.length === 3 ? `${o}:00` : o;
+  } catch {
+    return "-03:00";
+  }
+}
+
+/** Próximo instante em que a empresa abre (a partir de `now`), ou null se não houver horário. */
+export function proximaAbertura(h: BusinessHours | null | undefined, now: Date = new Date()): Date | null {
+  if (!h?.enabled) return null;
+  const tz = h.timezone || "America/Sao_Paulo";
+  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  for (let i = 0; i < 8; i++) {
+    const dia = new Date(now.getTime() + i * 86_400_000);
+    const sched = h.dias?.[String(getZonedParts(dia, tz).dow)];
+    if (!sched || hhmmToMinutes(sched.abre) == null) continue;
+    const abertura = new Date(`${ymd.format(dia)}T${sched.abre.padStart(5, "0")}:00${offsetDe(tz, dia)}`);
+    if (abertura.getTime() > now.getTime()) return abertura;
+  }
+  return null;
+}
+
+/** "amanhã às 08:00" / "segunda-feira, 06/10 às 08:00" — como a IA deve dizer ao cliente. */
+export function descreverAbertura(abertura: Date, tz = "America/Sao_Paulo", now: Date = new Date()): string {
+  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const hora = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(abertura);
+  const hoje = ymd.format(now);
+  const amanha = ymd.format(new Date(now.getTime() + 86_400_000));
+  const dia = ymd.format(abertura);
+  if (dia === hoje) return `hoje às ${hora}`;
+  if (dia === amanha) return `amanhã às ${hora}`;
+  const extenso = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "2-digit" }).format(abertura);
+  return `${extenso} às ${hora}`;
+}
 
 export function defaultHours(): BusinessHours {
   return {

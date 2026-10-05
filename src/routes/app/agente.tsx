@@ -486,13 +486,32 @@ function AgentePage() {
               <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3">
                 <div>
                   <div className="text-sm font-medium">Controle de Horário Ativo</div>
-                  <div className="text-xs text-muted-foreground">Fora destes horários, o sistema enviará a mensagem de ausência e não chamará a IA.</div>
+                  <div className="text-xs text-muted-foreground">
+                    {horarios.modo_fora === "atender"
+                      ? "Fora destes horários a IA continua atendendo, mas não marca nada para a hora e combina o retorno da equipe."
+                      : "Fora destes horários, o sistema enviará a mensagem de ausência e não chamará a IA."}
+                  </div>
                 </div>
                 <Switch checked={horarios.enabled} onCheckedChange={(v) => setHorarios((prev) => ({ ...prev, enabled: v }))} />
               </div>
 
               {horarios.enabled && (
                 <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Fora do horário, a IA…</Label>
+                    <Select value={horarios.modo_fora ?? "bloquear"} onValueChange={(v) => setHorarios((prev) => ({ ...prev, modo_fora: v as "bloquear" | "atender" }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bloquear">Avisa que está fechado e não responde</SelectItem>
+                        <SelectItem value="atender">Continua atendendo e combina o retorno da equipe</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11.5px] text-muted-foreground">
+                      {horarios.modo_fora === "atender"
+                        ? "À noite e no fim de semana ela tira dúvidas e preenche a ficha. Para fechar, pagar ou confirmar vaga, diz que a equipe entra em contato na próxima abertura e deixa o lead na fila Aguardando Humano com a hora do retorno."
+                        : "Mensagem de ausência uma vez e silêncio até a próxima abertura. A mensagem que chegou fica no painel."}
+                    </p>
+                  </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Horários por dia da semana</Label>
                     <div className="grid gap-2">

@@ -271,6 +271,8 @@ export function buildSystemPrompt(
     googleConectado?: boolean;
     /** Intervalos já ocupados na agenda (texto pronto, um por linha). A IA não oferece esses. */
     ocupados?: string[];
+    /** Fora do horário com modo "atender": `quando` é como dizer a próxima abertura ("amanhã às 08:00"). */
+    foraHorario?: { quando: string };
     /** Memória do sistema sobre o contato (ficha), para não reenviar a conversa inteira. */
     ficha?: { campos?: Record<string, string> | null; resumo?: string | null };
   },
@@ -439,6 +441,19 @@ Se uma frase só já resolve, use UMA parte e pronto (sem o marcador). Nunca mai
 
   blocos.push(blocoCalendario());
 
+  // Noite e fim de semana com a IA ligada: ela atende, coleta a ficha e, no que depende de
+  // gente, combina o retorno — em vez de "estamos fechados" e silêncio até o dia seguinte.
+  if (opts?.foraHorario) {
+    blocos.push(
+      `FORA DO HORÁRIO DE ATENDIMENTO (a equipe volta ${opts.foraHorario.quando}):
+- Continue atendendo normalmente: tire dúvidas com o que está acima e colete as informações da ficha.
+- NÃO marque visita nem qualquer compromisso para agora; visitas só a partir de ${opts.foraHorario.quando}.
+- Quando o assunto depender da equipe — fechar matrícula, pagamento, confirmar vaga, documento, algo que você não sabe —, diga que anotou tudo e que uma pessoa da equipe entra em contato ${opts.foraHorario.quando}, e escreva em uma nova linha exatamente:
+[RETORNO_EQUIPE: o que a pessoa quer, em poucas palavras]
+Marcador interno, não aparece para o cliente. Use só uma vez por assunto. Não use [ENCAMINHAR_HUMANO] fora do horário, a não ser urgência real (saúde, reclamação grave).`,
+    );
+  }
+
   // O marcador vale com ou sem Google Agenda: sem ele, o sistema registra a visita no
   // próprio Atendizz e avisa a equipe. Antes, sem Google a IA dizia "confirmada" e a
   // visita não ficava registrada em lugar nenhum.
@@ -517,6 +532,8 @@ export function parseAiOutput(
   segmento: string | null;
   /** Cliente desmarcou/quer remarcar a visita já marcada. */
   cancelarVisita: boolean;
+  /** Fora do horário: o que o cliente quer e que a equipe retomará na próxima abertura. */
+  retornoEquipe: string | null;
 } {
   let text = raw || "";
   let stage: string | null = null;
@@ -525,6 +542,13 @@ export function parseAiOutput(
   let encaminharHumano: string | null = null;
   let segmento: string | null = null;
   let cancelarVisita = false;
+  let retornoEquipe: string | null = null;
+
+  const retornoMatch = text.match(/\[\s*RETORNO_EQUIPE\s*:\s*([^\]]+)\]/i);
+  if (retornoMatch) {
+    retornoEquipe = retornoMatch[1].trim().slice(0, 160) || null;
+    text = text.replace(retornoMatch[0], "").trim();
+  }
 
   const cancelMatch = text.match(/\[\s*CANCELAR_VISITA\s*\]/i);
   if (cancelMatch) {
@@ -594,7 +618,7 @@ export function parseAiOutput(
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
     .slice(0, 3);
-  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento, cancelarVisita };
+  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento, cancelarVisita, retornoEquipe };
 }
 
 export function classifyStagePromptInstruction(): string {

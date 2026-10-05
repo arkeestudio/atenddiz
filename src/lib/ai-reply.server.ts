@@ -26,6 +26,8 @@ export async function runAiReply(opts: {
   receiptAnalysis?: any;
   /** O cliente mandou nota de voz (o texto aqui é a transcrição). Decide se a resposta volta em áudio. */
   entradaFoiAudio?: boolean;
+  /** Fora do horário com modo "atender": a IA continua, mas combina o retorno da equipe para `quando`. */
+  foraHorario?: { quando: string; abertura: string | null } | null;
 }): Promise<string> {
   const { admin: supabaseAdmin, companyId, userId, instanceName, number, pushName, text, stages } = opts;
   const isReceipt = !!opts.isReceipt;
@@ -130,6 +132,7 @@ export async function runAiReply(opts: {
     googleConectado: !!googleIntegration?.conectado,
     ocupados: ocupados ? descreverOcupados(ocupados) : undefined,
     ficha: { campos: (cardRow as any)?.ficha ?? null, resumo: (cardRow as any)?.ficha_resumo ?? null },
+    foraHorario: opts.foraHorario ? { quando: opts.foraHorario.quando } : undefined,
   });
 
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
@@ -191,7 +194,7 @@ export async function runAiReply(opts: {
     console.error("[ai]", e?.message);
   }
 
-  const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento, cancelarVisita } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
+  const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento, cancelarVisita, retornoEquipe } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
   const finalParts = sanitizeAiParts(responderEmPartes ? parts : [parts.join(" ")]);
 
   // Gera PIX Copia e Cola instantâneo se a IA definiu valor de pagamento
@@ -504,6 +507,38 @@ export async function runAiReply(opts: {
     }
   }
 
+  // Fora do horário, a IA combinou o retorno da equipe: o lead entra na fila "aguardando
+  // humano" com a hora do retorno — SEM pausar a IA, que segue tirando dúvidas durante a
+  // noite. De manhã, a equipe abre o painel e vê quem está esperando ligação.
+  let retornoAplicado: string | null = null;
+  if (retornoEquipe) {
+    try {
+      const quando = opts.foraHorario?.quando || "no próximo horário de atendimento";
+      const { data: cardRet } = await supabaseAdmin
+        .from("crm_cards").select("id, aguardando_humano").eq("company_id", companyId).eq("numero", number).maybeSingle();
+      if ((cardRet as any)?.id) {
+        await supabaseAdmin
+          .from("crm_cards")
+          .update({
+            aguardando_humano: true,
+            ...((cardRet as any).aguardando_humano ? {} : { aguardando_desde: new Date().toISOString() }),
+            transferencia_motivo: `Retorno ${quando}: ${retornoEquipe}`,
+            proxima_acao: `Retornar ${quando}: ${retornoEquipe}`,
+            ...(opts.foraHorario?.abertura ? { follow_up: opts.foraHorario.abertura } : {}),
+          } as any)
+          .eq("id", (cardRet as any).id);
+        await supabaseAdmin.from("lead_evento").insert({
+          company_id: companyId, card_id: (cardRet as any).id, tipo: "retorno_equipe",
+          descricao: `Fora do horário: ${retornoEquipe}. Retorno da equipe combinado ${quando}.`,
+        });
+      }
+      await notaInterna(supabaseAdmin, companyId, userId, number, `🌙 Fora do horário — o cliente quer: ${retornoEquipe}. A IA combinou retorno da equipe ${quando}. A ficha está preenchida; a IA segue respondendo dúvidas até lá.`);
+      retornoAplicado = quando;
+    } catch (e: any) {
+      console.warn("[retorno-equipe]", e?.message);
+    }
+  }
+
   // Contato novo: busca nome e foto de perfil depois que o card existe.
   const { sincronizarPerfilContato } = await import("@/lib/contato-perfil.server");
   await sincronizarPerfilContato({ admin: supabaseAdmin, companyId, instanceName, numero: number });
@@ -521,6 +556,8 @@ export async function runAiReply(opts: {
         stage ? `etapa: ${stage}` : "sem etapa",
         segmentoAplicado ? `segmento: ${segmentoAplicado}` : null,
         agendaResultado ? `agenda: ${agendaResultado}` : null,
+        retornoAplicado ? `retorno da equipe: ${retornoAplicado}` : null,
+        opts.foraHorario ? "fora do horário (modo atender)" : null,
         vozResultado ? `voz: ${vozResultado}` : null,
         encaminharHumano ? `transferiu: ${encaminharHumano}` : null,
         pixValor ? `pix: R$ ${pixValor}` : null,

@@ -548,11 +548,22 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             console.log("[whatsapp] IA reassumiu após inatividade humana", companyId, number);
           }
 
-          // Horário de atendimento: se ativo e fora do horário, manda mensagem padrão e não chama IA.
+          // Horário de atendimento. Dois modos fora do expediente:
+          // - "atender": a IA segue respondendo, sabendo que está fora do horário — não marca nada
+          //   para agora e combina o retorno da equipe para a próxima abertura (contexto abaixo).
+          // - "bloquear" (padrão): manda a mensagem de ausência e não chama a IA.
+          let foraHorarioCtx: { quando: string; abertura: string | null } | null = null;
           try {
-            const { isWithinBusinessHours } = await import("@/lib/business-hours");
+            const { isWithinBusinessHours, proximaAbertura, descreverAbertura } = await import("@/lib/business-hours");
             const horarios = (cfg as any)?.horarios_atendimento;
-            if (horarios?.enabled && !isWithinBusinessHours(horarios)) {
+            if (horarios?.enabled && !isWithinBusinessHours(horarios) && horarios.modo_fora === "atender") {
+              const abertura = proximaAbertura(horarios);
+              foraHorarioCtx = {
+                quando: abertura ? descreverAbertura(abertura, horarios.timezone) : "no próximo horário de atendimento",
+                abertura: abertura ? abertura.toISOString() : null,
+              };
+            }
+            if (horarios?.enabled && !isWithinBusinessHours(horarios) && horarios.modo_fora !== "atender") {
               const msgFora =
                 ((cfg as any)?.mensagem_fora_horario as string) ||
                 "No momento estamos fora do horário de atendimento. Retornamos em breve.";
@@ -630,6 +641,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
           const result = await runAiReply({
             admin: supabaseAdmin, companyId, userId, instanceName, number, pushName, text, stages, cfg, isReceipt, receiptAnalysis,
             entradaFoiAudio: !!audioMsg,
+            foraHorario: foraHorarioCtx,
           });
           return new Response(result, { status: 200 });
         } catch (e: any) {
