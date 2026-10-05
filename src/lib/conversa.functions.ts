@@ -27,47 +27,84 @@ async function resolveCompanyId(supabase: any, userId: string): Promise<string> 
  * pausa de atendimento humano e as imagens que o contato mandou.
  * Não toca na configuração da IA nem em nenhum outro contato.
  */
+// Duas ações com propósitos diferentes, mesmo miolo:
+// - "recomecar": zera a conversa (mensagens, mídia, ficha, pausa, visitas) e a IA trata o
+//   contato como novo — mas o CADASTRO fica (nome, telefone, tags, origem, histórico de
+//   eventos). Para teste ou para "começar do zero com esta família".
+// - "excluir": remove o contato do sistema. Some da lista, do Kanban e da planilha. Para
+//   spam, número errado, teste que não deve existir.
+async function apagarConversa(
+  context: { supabase: any; userId: string },
+  numeroBruto: string,
+  modo: "recomecar" | "excluir",
+) {
+  const companyId = await resolveCompanyId(context.supabase, context.userId);
+  await exigirAdmin(context.supabase, context.userId, companyId);
+  const numero = String(numeroBruto || "").trim();
+  if (!numero) throw new Error("Número não informado.");
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { extrairCaminhoMidia } = await import("./midia-conversa.shared");
+  const admin = supabaseAdmin as any;
+
+  // Recolhe as imagens antes de apagar as mensagens, senão o caminho se perde e os
+  // arquivos ficam órfãos no bucket a cada rodada de teste.
+  const { data: msgs } = await admin.from("mensagens").select("texto").eq("company_id", companyId).eq("numero", numero);
+  const arquivos = ((msgs ?? []) as any[])
+    .map((m) => extrairCaminhoMidia(String(m.texto ?? "")))
+    .filter((c): c is string => !!c);
+  const apagadas = (msgs ?? []).length;
+
+  const { data: card } = await admin.from("crm_cards").select("id").eq("company_id", companyId).eq("numero", numero).maybeSingle();
+
+  await admin.from("mensagens").delete().eq("company_id", companyId).eq("numero", numero);
+  await admin.from("contact_pause").delete().eq("company_id", companyId).eq("numero", numero);
+  if (card?.id) await admin.from("agendamento").delete().eq("company_id", companyId).eq("card_id", card.id);
+
+  if (modo === "excluir") {
+    // O card leva ficha, notas e eventos junto (ON DELETE CASCADE).
+    await admin.from("crm_cards").delete().eq("company_id", companyId).eq("numero", numero);
+  } else if (card?.id) {
+    // Volta para a primeira etapa do funil, ficha vazia, sem fila nem próxima ação.
+    const { data: primeira } = await admin
+      .from("crm_stage").select("id, nome").eq("company_id", companyId).order("ordem", { ascending: true }).limit(1).maybeSingle();
+    await admin
+      .from("crm_cards")
+      .update({
+        ficha: {}, ficha_resumo: null, ficha_proximo_passo: null, ficha_atualizada_em: null,
+        aguardando_humano: false, aguardando_desde: null, transferencia_motivo: null,
+        proxima_acao: null, follow_up: null, ultima_mensagem: null,
+        ...(primeira ? { stage_id: primeira.id, status: primeira.nome } : {}),
+      })
+      .eq("id", card.id);
+    await admin.from("lead_evento").insert({
+      company_id: companyId, card_id: card.id, tipo: "conversa_recomecada",
+      descricao: `Conversa recomeçada pela equipe: ${apagadas} mensagens apagadas, ficha zerada`,
+    });
+  }
+
+  if (arquivos.length) {
+    try {
+      const { BUCKET_MIDIA } = await import("./midia-conversa.server");
+      await admin.storage.from(BUCKET_MIDIA).remove(arquivos);
+    } catch (e: any) {
+      // Arquivo órfão é chato, não é erro: a conversa já foi apagada.
+      console.warn("[apagarConversa] não deu para apagar a mídia:", e?.message);
+    }
+  }
+
+  return { ok: true, mensagens: apagadas, arquivos: arquivos.length };
+}
+
 export const reiniciarConversa = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { numero: string }) => d)
-  .handler(async ({ context, data }) => {
-    const companyId = await resolveCompanyId(context.supabase, context.userId);
-    const numero = String(data.numero || "").trim();
-    if (!numero) throw new Error("Número não informado.");
+  .handler(({ context, data }) => apagarConversa(context, data.numero, "recomecar"));
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { extrairCaminhoMidia } = await import("./midia-conversa.shared");
-
-    // Recolhe as imagens antes de apagar as mensagens, senão o caminho se perde e os
-    // arquivos ficam órfãos no bucket a cada rodada de teste.
-    const { data: msgs } = await (supabaseAdmin as any)
-      .from("mensagens")
-      .select("texto")
-      .eq("company_id", companyId)
-      .eq("numero", numero);
-    const arquivos = ((msgs ?? []) as any[])
-      .map((m) => extrairCaminhoMidia(String(m.texto ?? "")))
-      .filter((c): c is string => !!c);
-
-    const apagadas = (msgs ?? []).length;
-
-    await (supabaseAdmin as any).from("mensagens").delete().eq("company_id", companyId).eq("numero", numero);
-    await (supabaseAdmin as any).from("contact_pause").delete().eq("company_id", companyId).eq("numero", numero);
-    // O card leva ficha, notas e eventos junto (ON DELETE CASCADE).
-    await (supabaseAdmin as any).from("crm_cards").delete().eq("company_id", companyId).eq("numero", numero);
-
-    if (arquivos.length) {
-      try {
-        const { BUCKET_MIDIA } = await import("./midia-conversa.server");
-        await (supabaseAdmin as any).storage.from(BUCKET_MIDIA).remove(arquivos);
-      } catch (e: any) {
-        // Arquivo órfão é chato, não é erro: a conversa já foi reiniciada.
-        console.warn("[reiniciarConversa] não deu para apagar a mídia:", e?.message);
-      }
-    }
-
-    return { ok: true, mensagens: apagadas, arquivos: arquivos.length };
-  });
+export const excluirConversa = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { numero: string }) => d)
+  .handler(({ context, data }) => apagarConversa(context, data.numero, "excluir"));
 
 // Apagar é coisa de dono/admin: atendente não zera o histórico da escola por engano.
 async function exigirAdmin(supabase: any, userId: string, companyId: string) {

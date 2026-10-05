@@ -24,7 +24,7 @@ import { sendWhatsappText, sendWhatsappMedia, sendInternalNote, setContactIaActi
 import { AUDIO_ENVIADO, TRANSCREVENDO, audioPendingText } from "@/lib/audio-labels";
 import { generateSuggestedReply, polishDraftMessage, sendPixPayment, assignConversationOwner } from "@/lib/chat-copilot.functions";
 import { marcarAtendido } from "@/lib/ficha.functions";
-import { reiniciarConversa } from "@/lib/conversa.functions";
+import { reiniciarConversa, excluirConversa } from "@/lib/conversa.functions";
 import { assinarMidiasConversa } from "@/lib/midia.functions";
 import { extrairCaminhoMidia, textoSemMarcadorMidia } from "@/lib/midia-conversa.shared";
 import { FichaAtendimento } from "@/components/ficha/ficha-atendimento";
@@ -648,8 +648,11 @@ function ConversasPage() {
   // Imagens ficam num bucket privado: o texto guarda só o caminho e aqui pedimos
   // uma URL temporária para exibir. Pede em lote, e só o que ainda não temos.
   const [reiniciarAlvo, setReiniciarAlvo] = useState<string | null>(null);
+  // "recomecar" zera a conversa e mantém o cadastro; "excluir" remove o contato do sistema.
+  const [acaoAlvo, setAcaoAlvo] = useState<"recomecar" | "excluir">("recomecar");
   const [reiniciando, setReiniciando] = useState(false);
   const reiniciarFn = useServerFn(reiniciarConversa);
+  const excluirFn = useServerFn(excluirConversa);
   const [midiaUrls, setMidiaUrls] = useState<Record<string, string>>({});
   const assinarMidias = useServerFn(assinarMidiasConversa);
   useEffect(() => {
@@ -1139,11 +1142,14 @@ function ConversasPage() {
                       {podeExcluir && (
                         <>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={() => { if (active) { setAcaoAlvo("recomecar"); setReiniciarAlvo(active); } }}>
+                            <RotateCcw className="size-3.5 mr-2" /> Recomeçar conversa
+                          </DropdownMenuItem>
                           <DropdownMenuItem
-                            onSelect={() => active && setReiniciarAlvo(active)}
+                            onSelect={() => { if (active) { setAcaoAlvo("excluir"); setReiniciarAlvo(active); } }}
                             className="text-red-600 focus:text-red-600"
                           >
-                            <Trash2 className="size-3.5 mr-2" /> Excluir conversa
+                            <Trash2 className="size-3.5 mr-2" /> Excluir contato
                           </DropdownMenuItem>
                         </>
                       )}
@@ -1493,17 +1499,31 @@ function ConversasPage() {
       {/* DIALOG DE RESUMO IA */}
       <Dialog open={!!reiniciarAlvo} onOpenChange={(o) => !o && setReiniciarAlvo(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Excluir esta conversa?</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{acaoAlvo === "excluir" ? "Excluir este contato?" : "Recomeçar esta conversa?"}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-2.5 text-[13px]">
-            <p>
-              Apaga <strong>todo o histórico</strong> de{" "}
-              <strong>{cards[reiniciarAlvo ?? ""]?.nome || reiniciarAlvo}</strong>: mensagens, ficha do
-              atendimento, notas e o lead no CRM. Se a pessoa escrever de novo, entra como contato novo.
-            </p>
-            <p className="text-muted-foreground">
-              Serve para testar a IA: a próxima mensagem desse número entra como se fosse um contato
-              novo, sem que ela "lembre" das conversas anteriores.
-            </p>
+            {acaoAlvo === "excluir" ? (
+              <>
+                <p>
+                  Remove <strong>{cards[reiniciarAlvo ?? ""]?.nome || reiniciarAlvo}</strong> do sistema: mensagens,
+                  ficha, notas, visitas e o lead no CRM. Some da lista, do Kanban e da planilha.
+                </p>
+                <p className="text-muted-foreground">Para spam, número errado ou teste que não deve existir. Se a pessoa escrever de novo, entra como contato novo.</p>
+              </>
+            ) : (
+              <>
+                <p>
+                  Apaga as <strong>mensagens, a ficha e as visitas</strong> de{" "}
+                  <strong>{cards[reiniciarAlvo ?? ""]?.nome || reiniciarAlvo}</strong> e volta o lead para a primeira
+                  etapa. O <strong>cadastro fica</strong> (nome, telefone, tags, origem, histórico de eventos).
+                </p>
+                <p className="text-muted-foreground">
+                  Para testar a IA ou começar do zero com esta família: a próxima mensagem desse número é atendida
+                  como primeiro contato, sem que a IA "lembre" das conversas anteriores.
+                </p>
+              </>
+            )}
             <p className="text-red-600 dark:text-red-400 font-medium">Não dá para desfazer.</p>
           </div>
           <DialogFooter>
@@ -1515,20 +1535,26 @@ function ConversasPage() {
                 if (!reiniciarAlvo) return;
                 setReiniciando(true);
                 try {
-                  const r: any = await reiniciarFn({ data: { numero: reiniciarAlvo } });
-                  toast.success(`Conversa reiniciada — ${r.mensagens} mensagens apagadas.`);
+                  const r: any = acaoAlvo === "excluir"
+                    ? await excluirFn({ data: { numero: reiniciarAlvo } })
+                    : await reiniciarFn({ data: { numero: reiniciarAlvo } });
+                  toast.success(
+                    acaoAlvo === "excluir"
+                      ? `Contato excluído — ${r.mensagens} mensagens apagadas.`
+                      : `Conversa recomeçada — ${r.mensagens} mensagens apagadas, cadastro mantido.`,
+                  );
                   setReiniciarAlvo(null);
                   setActive(null);
                   if (companyId) await load(companyId);
                 } catch (e: any) {
-                  toast.error(e?.message ?? "Não deu para reiniciar.");
+                  toast.error(e?.message ?? "Não deu para concluir.");
                 } finally {
                   setReiniciando(false);
                 }
               }}
             >
               {reiniciando && <Loader2 className="size-4 mr-1.5 animate-spin" />}
-              Apagar e recomeçar
+              {acaoAlvo === "excluir" ? "Excluir contato" : "Apagar e recomeçar"}
             </Button>
           </DialogFooter>
         </DialogContent>
