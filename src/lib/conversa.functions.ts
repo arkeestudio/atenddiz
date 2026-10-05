@@ -68,3 +68,80 @@ export const reiniciarConversa = createServerFn({ method: "POST" })
 
     return { ok: true, mensagens: apagadas, arquivos: arquivos.length };
   });
+
+// Apagar é coisa de dono/admin: atendente não zera o histórico da escola por engano.
+async function exigirAdmin(supabase: any, userId: string, companyId: string) {
+  const { data } = await supabase
+    .from("company_user")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  const role = data?.role;
+  if (role !== "owner" && role !== "admin") {
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+    if (!(roles ?? []).some((r: any) => r.role === "super_admin")) {
+      throw new Error("Só dono ou admin pode apagar conversas.");
+    }
+  }
+}
+
+/**
+ * Zera o atendimento da empresa inteira: mensagens, leads (com ficha, notas e eventos),
+ * visitas, pausas e os arquivos de mídia. Configuração da IA, funil e equipe ficam.
+ *
+ * Existe para a virada de testes para produção — sem isso a escola dependia de SQL.
+ * Só dono/admin, e a tela ainda pede para digitar APAGAR.
+ */
+export const limparConversas = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { confirmacao: string }) => d)
+  .handler(async ({ context, data }) => {
+    const companyId = await resolveCompanyId(context.supabase, context.userId);
+    await exigirAdmin(context.supabase, context.userId, companyId);
+    if (data.confirmacao !== "APAGAR") throw new Error("Confirmação inválida.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as any;
+
+    const [{ count: mensagens }, { count: leads }] = await Promise.all([
+      admin.from("mensagens").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+      admin.from("crm_cards").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+    ]);
+
+    await admin.from("mensagens").delete().eq("company_id", companyId);
+    await admin.from("agendamento").delete().eq("company_id", companyId);
+    await admin.from("contact_pause").delete().eq("company_id", companyId);
+    // Leva ficha, notas e eventos junto (ON DELETE CASCADE).
+    await admin.from("crm_cards").delete().eq("company_id", companyId);
+
+    // Mídia: o bucket guarda <empresa>/<numero>/arquivo e <empresa>/perfil/arquivo.
+    // Dois níveis bastam; falhar aqui não desfaz a limpeza, só deixa arquivo órfão.
+    let arquivos = 0;
+    try {
+      const { BUCKET_MIDIA } = await import("./midia-conversa.server");
+      const bucket = admin.storage.from(BUCKET_MIDIA);
+      const { data: pastas } = await bucket.list(companyId, { limit: 1000 });
+      for (const pasta of pastas ?? []) {
+        const { data: itens } = await bucket.list(`${companyId}/${pasta.name}`, { limit: 1000 });
+        const caminhos = (itens ?? []).filter((i: any) => i.id).map((i: any) => `${companyId}/${pasta.name}/${i.name}`);
+        if (caminhos.length) {
+          await bucket.remove(caminhos);
+          arquivos += caminhos.length;
+        }
+      }
+    } catch (e: any) {
+      console.warn("[limparConversas] mídia não apagada por completo:", e?.message);
+    }
+
+    const { writeAudit } = await import("./audit.server");
+    await writeAudit({
+      companyId,
+      userId: context.userId,
+      acao: "limpar_conversas",
+      recurso: "conversas",
+      detalhes: { mensagens: mensagens ?? 0, leads: leads ?? 0, arquivos },
+    });
+
+    return { ok: true, mensagens: mensagens ?? 0, leads: leads ?? 0, arquivos };
+  });

@@ -15,6 +15,7 @@ import { brand } from "@/config/brand";
 import { TemplatesTab } from "@/components/config/templates-tab";
 import { HorariosTab } from "@/components/config/horarios-tab";
 import { listAuditLog, exportLgpd } from "@/lib/security.functions";
+import { limparConversas } from "@/lib/conversa.functions";
 import { finStatus, enableFinanceiro } from "@/lib/financeiro.functions";
 
 export const Route = createFileRoute("/app/configuracoes")({
@@ -278,8 +279,26 @@ function ConfigPage() {
 }
 
 function SegurancaTab() {
+  const ctx = Route.useRouteContext();
   const fetchLog = useServerFn(listAuditLog);
   const fetchExport = useServerFn(exportLgpd);
+  const limparFn = useServerFn(limparConversas);
+  const [zerando, setZerando] = useState(false);
+  const podeApagar = ctx.membership?.role === "owner" || ctx.membership?.role === "admin" || !!ctx.isSuperAdmin;
+  async function zerarConversas() {
+    const digitado = window.prompt("Isso apaga TODAS as conversas, leads, visitas e arquivos desta empresa, sem volta.\n\nPara confirmar, digite APAGAR:");
+    if (digitado === null) return;
+    if (digitado.trim() !== "APAGAR") return toast.error("Confirmação não confere. Nada foi apagado.");
+    setZerando(true);
+    try {
+      const r = await limparFn({ data: { confirmacao: "APAGAR" } });
+      toast.success(`Pronto: ${r.mensagens} mensagens, ${r.leads} leads e ${r.arquivos} arquivos apagados.`);
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível apagar.");
+    } finally {
+      setZerando(false);
+    }
+  }
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -344,6 +363,23 @@ function SegurancaTab() {
           </Button>
         </div>
       </Card>
+
+      {podeApagar && (
+        <Card className="p-5 space-y-3 border-red-500/30">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-semibold flex items-center gap-2 text-red-600 dark:text-red-400"><AlertTriangle className="size-4" /> Zerar conversas</h2>
+              <p className="text-sm text-muted-foreground">
+                Apaga <b>todas</b> as conversas, leads (com ficha e notas), visitas e arquivos desta empresa. A configuração da IA,
+                o funil e a equipe ficam. Para a virada de testes para produção. <b>Não tem volta.</b>
+              </p>
+            </div>
+            <Button variant="destructive" onClick={() => void zerarConversas()} disabled={zerando}>
+              {zerando ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Trash2 className="size-4 mr-1.5" />} Apagar tudo
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <Card className="p-5 space-y-3">
         <h2 className="font-semibold flex items-center gap-2"><Shield className="size-4" /> Log de auditoria</h2>

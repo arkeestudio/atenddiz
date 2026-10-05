@@ -94,6 +94,8 @@ type StageWithTipo = Stage & { tipo?: string };
 
 function ConversasPage() {
   const ctx = Route.useRouteContext();
+  // Apagar conversa é de dono/admin (o servidor também confere).
+  const podeExcluir = ctx.membership?.role === "owner" || ctx.membership?.role === "admin" || !!ctx.isSuperAdmin;
   const companyId = ctx.company?.id;
   const userId = ctx.user.id;
 
@@ -1134,13 +1136,17 @@ function ConversasPage() {
                       >
                         <Star className="size-3.5 mr-2 text-amber-500" /> Enviar pesquisa (CSAT)
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={() => active && setReiniciarAlvo(active)}
-                        className="text-red-600 focus:text-red-600"
-                      >
-                        <RotateCcw className="size-3.5 mr-2" /> Recomeçar conversa
-                      </DropdownMenuItem>
+                      {podeExcluir && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={() => active && setReiniciarAlvo(active)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="size-3.5 mr-2" /> Excluir conversa
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1487,12 +1493,12 @@ function ConversasPage() {
       {/* DIALOG DE RESUMO IA */}
       <Dialog open={!!reiniciarAlvo} onOpenChange={(o) => !o && setReiniciarAlvo(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Recomeçar a conversa do zero?</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Excluir esta conversa?</DialogTitle></DialogHeader>
           <div className="space-y-2.5 text-[13px]">
             <p>
               Apaga <strong>todo o histórico</strong> de{" "}
               <strong>{cards[reiniciarAlvo ?? ""]?.nome || reiniciarAlvo}</strong>: mensagens, ficha do
-              atendimento, notas e o lead no CRM.
+              atendimento, notas e o lead no CRM. Se a pessoa escrever de novo, entra como contato novo.
             </p>
             <p className="text-muted-foreground">
               Serve para testar a IA: a próxima mensagem desse número entra como se fosse um contato
