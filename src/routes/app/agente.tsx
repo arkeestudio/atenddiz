@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard, ShoppingBag, Headphones, ArrowRightLeft, ClipboardList, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { Bot, Loader2, Save, Send, Sparkles, Wand2, ChevronDown, Settings2, RefreshCcw, HelpCircle, ArrowLeft, CheckCircle2, BookOpen, Clock, CreditCard, ShoppingBag, Headphones, ArrowRightLeft, ClipboardList, Plus, Trash2, ArrowUp, ArrowDown, Lightbulb } from "lucide-react";
+import { ConhecimentoItens } from "@/components/agente/conhecimento-itens";
 import { brand } from "@/config/brand";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { testAiReply } from "@/lib/evolution.functions";
@@ -192,6 +193,9 @@ function AgentePage() {
     setSaving(true);
     const payload = {
       ...cfg,
+      // Salvo na hora pelo componente de informações; o cfg daqui pode estar velho e
+      // sobrescreveria o que a equipe acabou de adicionar.
+      conhecimento_itens: undefined,
       foco_atendimento: focoAtendimento,
       tamanho_resposta: tamanhoResposta,
       telefone_transferencia: telefone,
@@ -455,6 +459,12 @@ function AgentePage() {
             <SummaryRow label="Pode fazer" value={cfg?.pode_fazer} multiline />
             <SummaryRow label="Não pode fazer" value={cfg?.nao_pode_fazer} multiline />
           </Section>
+
+          {companyId && (
+            <Section title="Informações para a IA" icon={<Lightbulb className="size-3.5" />}>
+              <ConhecimentoItens companyId={companyId} />
+            </Section>
+          )}
 
           <Section title="Base de Conhecimento & FAQ (RAG)" icon={<BookOpen className="size-3.5" />}>
             <div className="space-y-2">

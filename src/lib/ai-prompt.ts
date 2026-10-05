@@ -248,6 +248,18 @@ Ao combinar qualquer dia, converta usando a lista acima e confirme com dia e mê
 Se o cliente não disser o dia, peça uma data específica. Não invente dia da semana nem data fora dessa lista.`;
 }
 
+function conhecimentoItensTexto(raw: unknown): string {
+  if (!Array.isArray(raw) || !raw.length) return "";
+  const itens = raw
+    .map((r: any) => ({ titulo: String(r?.titulo ?? "").trim(), texto: String(r?.texto ?? "").trim(), em: String(r?.atualizado_em ?? "") }))
+    .filter((r) => r.texto)
+    .sort((a, b) => (a.em < b.em ? 1 : -1));
+  if (!itens.length) return "";
+  return `INFORMAÇÕES ADICIONADAS PELA EQUIPE (valem mais que o texto geral se houver conflito; a mais recente vem primeiro):\n${itens
+    .map((r) => `• ${r.titulo ? `${r.titulo}: ` : ""}${r.texto}`)
+    .join("\n")}`;
+}
+
 export function buildSystemPrompt(
   c: Partial<AgentConfig>,
   opts?: {
@@ -364,6 +376,9 @@ Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma
     safeText(c.objecoes) ? `OBJEÇÕES COMUNS E COMO RESPONDER:\n${safeText(c.objecoes)}` : "",
     safeText(c.faq) ? `FAQ:\n${safeText(c.faq)}` : "",
     safeText(c.base_conhecimento) ? `BASE DE CONHECIMENTO / REGRAS DE NEGÓCIO:\n${safeText(c.base_conhecimento)}` : "",
+    // Itens avulsos adicionados pela equipe (um fato cada). Mais recentes primeiro: quando dois
+    // itens se contradizem, o mais novo é a informação atual.
+    conhecimentoItensTexto((c as any).conhecimento_itens),
     safeText(c.politicas) ? `POLÍTICAS (troca/cancelamento/garantia):\n${safeText(c.politicas)}` : "",
     c.posvenda_msg ? `Mensagem padrão de pós-venda: ${c.posvenda_msg}` : "",
     c.pedir_avaliacao ? "Quando uma venda for concluída, peça uma avaliação de forma natural." : "",
