@@ -46,11 +46,13 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
                     : null;
                 if (newStatus && newStatus !== ci.status) {
                   await (supabaseAdmin as any).from("whatsapp_instances").update({ status: newStatus }).eq("instance_name", instanceName);
-                  // Marca a hora da reconexão para a carência da IA. Update à parte: se a coluna
-                  // ainda não existir, o status acima já foi gravado.
-                  if (newStatus === "connected") {
-                    await (supabaseAdmin as any).from("whatsapp_instances").update({ conectado_em: new Date().toISOString() }).eq("instance_name", instanceName);
-                  }
+                }
+                // Hora da reconexão para a carência da IA — SEMPRE que o servidor avisa "conectou",
+                // mesmo que o status já constasse como conectado (um pm2 restart é rápido demais
+                // para o painel ver a queda). Update à parte: se a coluna não existir, o status
+                // acima já foi gravado.
+                if (newStatus === "connected") {
+                  await (supabaseAdmin as any).from("whatsapp_instances").update({ conectado_em: new Date().toISOString() }).eq("instance_name", instanceName);
                 }
               }
             } catch (e: any) { console.error("[connection.update]", e?.message); }

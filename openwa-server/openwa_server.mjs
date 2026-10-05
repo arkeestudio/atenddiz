@@ -170,6 +170,7 @@ async function getOrCreateSession(name, webhookUrl) {
     s.status = 'CONNECTED';
     s.qrBase64 = null;
     s.qrCode = null;
+    avisarStatus(s, name, 'CONNECTED');
 
     try {
       const me = await client.getMe();
@@ -183,6 +184,7 @@ async function getOrCreateSession(name, webhookUrl) {
     client.onStateChanged((state) => {
       console.log(`[OpenWA Server] State changed for ${name}: ${state}`);
       if (state === 'CONNECTED' || state === 'NORMAL') {
+        if (s.status !== 'CONNECTED') avisarStatus(s, name, 'CONNECTED');
         s.status = 'CONNECTED';
       } else if (state === 'PAIRING' || state === 'UNPAIRED') {
         s.status = 'CONNECTING';
@@ -365,6 +367,19 @@ window.__atenddiz = window.__atenddiz || (() => {
   return { chats, resolverChat, acharModulo };
 })();
 `;
+// Avisa o site que a sessão (re)conectou. É o que permite ao site gravar a hora da reconexão
+// e segurar a IA por alguns minutos — sem isso, um `pm2 restart` passava despercebido.
+function avisarStatus(s, name, state) {
+  if (!s.webhookUrl) return;
+  fetch(s.webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event: 'session.status_changed', instance: name, instanceName: name, sessionId: name, data: { state } }),
+  })
+    .then((r) => console.log(`[OpenWA Server] Status ${state} avisado ao site (${r.status})`))
+    .catch((e) => console.warn('[OpenWA Server] Não avisou status ao site:', e.message));
+}
+
 async function garantirHelpers(page) {
   await page.evaluate((src) => { if (!window.__atenddiz) (0, eval)(src); }, PAGINA_HELPERS_SRC);
 }
