@@ -108,11 +108,11 @@ export async function runAiReply(opts: {
       const { DIAS_OCUPADOS_NO_PROMPT, ocupadosLocais } = await import("@/lib/agenda.server");
       const agora = new Date();
       const ate = new Date(agora.getTime() + DIAS_OCUPADOS_NO_PROMPT * 86_400_000).toISOString();
+      // Locais sempre (a equipe marca visita à mão pela Agenda); Google por cima, quando há.
+      ocupados = await ocupadosLocais(supabaseAdmin, companyId, agora.toISOString(), ate);
       if (googleConectado) {
         const { listarOcupados } = await import("@/lib/google.server");
-        ocupados = await listarOcupados(supabaseAdmin, companyId, agora.toISOString(), ate);
-      } else {
-        ocupados = await ocupadosLocais(supabaseAdmin, companyId, agora.toISOString(), ate);
+        ocupados = [...ocupados, ...(await listarOcupados(supabaseAdmin, companyId, agora.toISOString(), ate))];
       }
     } catch (e: any) {
       console.warn("[agenda] não foi possível ler os ocupados:", e?.message);
@@ -253,9 +253,11 @@ export async function runAiReply(opts: {
     } else {
       const quando = descreverHorario(v.inicio);
       try {
-        const ocupadosAgora = googleConectado
-          ? await (await import("@/lib/google.server")).listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString())
-          : await ocupadosLocais(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
+        let ocupadosAgora = await ocupadosLocais(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
+        if (googleConectado) {
+          const { listarOcupados } = await import("@/lib/google.server");
+          ocupadosAgora = [...ocupadosAgora, ...(await listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString()))];
+        }
         if (conflita(ocupadosAgora, v.inicio, v.fim)) {
           agendaResultado = `conflito em ${quando}`;
           finalParts.push(`Ih, ${quando} acabou de ficar ocupado na agenda. Tem outro horário que fica bom para você?`);

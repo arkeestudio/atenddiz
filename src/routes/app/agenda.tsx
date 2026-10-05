@@ -1,11 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { brand } from "@/config/brand";
 import { HelpTip } from "@/components/help-tip";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CalendarDays, CheckCircle2, XCircle, MessageSquareText, RefreshCw, RotateCcw } from "lucide-react";
+import { CalendarDays, CheckCircle2, XCircle, MessageSquareText, RefreshCw, RotateCcw, Plus, Loader2 } from "lucide-react";
+import { criarAgendamento } from "@/lib/agenda.functions";
 
 // Visitas marcadas pela IA (ou pela equipe) num lugar só. A IA marca, avisa na conversa e
 // no painel — mas quem precisa olhar "o que tem amanhã?" não pode depender de ter visto o
@@ -59,6 +64,7 @@ function AgendaPage() {
   const [aba, setAba] = useState<Aba>("proximas");
   const [visitas, setVisitas] = useState<Visita[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [novaAberta, setNovaAberta] = useState(false);
 
   const carregar = useCallback(async () => {
     if (!companyId) return;
@@ -151,8 +157,20 @@ function AgendaPage() {
           <Button variant="outline" size="sm" onClick={() => void carregar()} title="Atualizar">
             <RefreshCw className={`size-3.5 ${carregando ? "animate-spin" : ""}`} />
           </Button>
+          <Button size="sm" onClick={() => setNovaAberta(true)}>
+            <Plus className="size-3.5 mr-1" /> Adicionar visita
+          </Button>
         </div>
       </header>
+
+      {companyId && (
+        <NovaVisitaDialog
+          aberta={novaAberta}
+          onClose={() => setNovaAberta(false)}
+          companyId={companyId}
+          onCriada={() => { setNovaAberta(false); void carregar(); }}
+        />
+      )}
 
       {aba === "proximas" && (
         <div className="flex gap-2 flex-wrap">
@@ -238,6 +256,116 @@ function AgendaPage() {
         })}
       </div>
     </div>
+  );
+}
+
+// Visita marcada à mão pela equipe: entra na mesma tabela que a IA consulta, então vira
+// bloqueio para ela; com contato ligado, a data vai para a ficha e o Kanban.
+function NovaVisitaDialog({ aberta, onClose, companyId, onCriada }: {
+  aberta: boolean; onClose: () => void; companyId: string; onCriada: () => void;
+}) {
+  const criar = useServerFn(criarAgendamento);
+  const hoje = chaveDia(new Date());
+  const [data, setData] = useState(hoje);
+  const [hora, setHora] = useState("10:00");
+  const [duracao, setDuracao] = useState(40);
+  const [titulo, setTitulo] = useState("Visita com a coordenação");
+  const [contato, setContato] = useState("");
+  const [contatos, setContatos] = useState<Array<{ numero: string; nome: string }>>([]);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!aberta) return;
+    setData(hoje); setHora("10:00"); setDuracao(40); setTitulo("Visita com a coordenação"); setContato("");
+    void (async () => {
+      const { data: rows } = await (supabase as any)
+        .from("crm_cards")
+        .select("numero, nome, nome_whatsapp")
+        .eq("company_id", companyId)
+        .order("ultima_em", { ascending: false })
+        .limit(300);
+      setContatos(((rows ?? []) as any[]).map((r) => ({ numero: r.numero, nome: r.nome || r.nome_whatsapp || r.numero })));
+    })();
+  }, [aberta, companyId, hoje]);
+
+  // O contato pode ser escolhido na lista ("Nome — número") ou digitado só o número.
+  function numeroDoContato(): string | null {
+    const t = contato.trim();
+    if (!t) return null;
+    const porRotulo = contatos.find((c) => `${c.nome} — ${c.numero}` === t || c.nome === t);
+    if (porRotulo) return porRotulo.numero;
+    const digitos = t.replace(/\D/g, "");
+    return digitos.length >= 8 ? digitos : null;
+  }
+
+  async function salvar(ignorarConflito = false) {
+    if (!data || !hora) return toast.error("Informe dia e hora.");
+    // Monta o ISO no fuso de Brasília; o servidor valida (data existe, não passou, etc.).
+    const inicio = new Date(`${data}T${hora}:00-03:00`);
+    const fim = new Date(inicio.getTime() + duracao * 60_000);
+    setSalvando(true);
+    try {
+      const r = await criar({ data: { inicio: inicio.toISOString(), fim: fim.toISOString(), titulo, numero: numeroDoContato(), ignorarConflito } });
+      if (!r.ok && r.conflito) {
+        const seguir = window.confirm(`Já existe algo na agenda em ${r.quando}. Marcar mesmo assim?`);
+        if (seguir) return void salvar(true);
+        return;
+      }
+      toast.success(`Visita marcada para ${r.quando}${r.google ? " — já está no Google Agenda" : ""}.`);
+      onCriada();
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível marcar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Dialog open={aberta} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Adicionar visita</DialogTitle></DialogHeader>
+        <div className="space-y-3 text-[13px]">
+          <div className="grid grid-cols-[1fr_110px_120px] gap-2">
+            <div className="space-y-1">
+              <Label className="text-[11px]">Dia</Label>
+              <Input type="date" value={data} min={hoje} onChange={(e) => setData(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Hora</Label>
+              <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Duração</Label>
+              <select value={duracao} onChange={(e) => setDuracao(Number(e.target.value))}
+                className="h-9 w-full rounded-md border border-input bg-[color:var(--panel)] px-2 text-[13px] outline-none focus:ring-1 focus:ring-ring">
+                {[20, 30, 40, 60, 90].map((m) => <option key={m} value={m}>{m} min</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">O que é</Label>
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Visita com a coordenação" className="h-9" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">Contato (opcional)</Label>
+            <Input list="agenda-contatos" value={contato} onChange={(e) => setContato(e.target.value)}
+              placeholder="Nome do lead ou telefone" className="h-9" />
+            <datalist id="agenda-contatos">
+              {contatos.map((c) => <option key={c.numero} value={`${c.nome} — ${c.numero}`} />)}
+            </datalist>
+            <p className="text-[11px] text-muted-foreground">
+              Com contato, a visita entra na ficha e no card dele — e a IA não oferece outra.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={salvando}>Cancelar</Button>
+          <Button onClick={() => void salvar()} disabled={salvando}>
+            {salvando ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <CalendarDays className="size-4 mr-1.5" />} Marcar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

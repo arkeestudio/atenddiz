@@ -55,13 +55,17 @@ const fmtHora = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit"
 
 /** Uma linha por intervalo ocupado, no fuso de Brasília, do jeito que a IA consegue ler. */
 export function descreverOcupados(ocupados: Array<{ inicio: string; fim: string }>): string[] {
+  // Local + Google podem trazer o mesmo intervalo duas vezes (evento criado por aqui vai
+  // para os dois). Uma linha por intervalo.
+  const vistos = new Set<string>();
   return ocupados
     .slice()
     .sort((a, b) => +new Date(a.inicio) - +new Date(b.inicio))
     .map((o) => {
       const i = new Date(o.inicio), f = new Date(o.fim);
       return `${fmtDia.format(i)} ${fmtHora.format(i)}–${fmtHora.format(f)}`;
-    });
+    })
+    .filter((linha) => (vistos.has(linha) ? false : (vistos.add(linha), true)));
 }
 
 export function descreverHorario(d: Date): string {
