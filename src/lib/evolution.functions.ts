@@ -202,6 +202,11 @@ export const checkWhatsappStatus = createServerFn({ method: "POST" })
         .from("whatsapp_instances")
         .update({ status: newStatus, ...(numero ? { numero, ultimo_numero: numero } : {}) })
         .eq("company_id", companyId);
+      // Acabou de conectar: hora da reconexão para a carência da IA (update à parte, tolerante
+      // à coluna ainda não existir).
+      if (newStatus === "connected" && row.status !== "connected") {
+        await (supabase as any).from("whatsapp_instances").update({ conectado_em: new Date().toISOString() }).eq("company_id", companyId);
+      }
     }
 
     // Acabou de (re)conectar: recupera o que chegou enquanto estava fora. Uma vez a cada

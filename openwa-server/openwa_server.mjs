@@ -533,11 +533,14 @@ const server = http.createServer(async (req, res) => {
             const recent = (msgs || []).slice(-15);
             for (const message of recent) {
               if (s.webhookUrl) {
+                // sync: true — o site guarda como histórico e NUNCA responde. Sem a marca, a
+                // IA conversava com conversas antigas depois de cada QR Code.
                 const payload = {
                   event: 'message.created',
                   instance: sessionId,
                   instanceName: sessionId,
                   sessionId: sessionId,
+                  sync: true,
                   data: message,
                 };
                 await fetch(s.webhookUrl, {

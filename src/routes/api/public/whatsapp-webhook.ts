@@ -46,6 +46,11 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
                     : null;
                 if (newStatus && newStatus !== ci.status) {
                   await (supabaseAdmin as any).from("whatsapp_instances").update({ status: newStatus }).eq("instance_name", instanceName);
+                  // Marca a hora da reconexão para a carência da IA. Update à parte: se a coluna
+                  // ainda não existir, o status acima já foi gravado.
+                  if (newStatus === "connected") {
+                    await (supabaseAdmin as any).from("whatsapp_instances").update({ conectado_em: new Date().toISOString() }).eq("instance_name", instanceName);
+                  }
                 }
               }
             } catch (e: any) { console.error("[connection.update]", e?.message); }
@@ -338,6 +343,42 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             }
           } catch {}
 
+          // Reenvio do sync da reconexão: é histórico, nunca conversa nova. Já está gravado
+          // acima; daqui em diante nada de IA, fila humana ou palavra-chave. Foi assim que a IA
+          // "conversou com conversas passadas" depois de um QR Code.
+          if (payload?.sync === true) {
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            return new Response("historico-sync", { status: 200 });
+          }
+
+          // Carência pós-reconexão: nos 15 min após a sessão voltar, a IA só atende quem é
+          // PRIMEIRO contato. Quem já tinha conversa pode ter sido atendido pelo celular enquanto
+          // o sistema estava fora — responder por cima é pior do que esperar a equipe olhar.
+          try {
+            const { data: instConn } = await (supabaseAdmin as any)
+              .from("whatsapp_instances")
+              .select("conectado_em")
+              .eq("instance_name", instanceName)
+              .maybeSingle();
+            const conectadoHa = instConn?.conectado_em ? Date.now() - new Date(instConn.conectado_em).getTime() : Infinity;
+            if (conectadoHa < CARENCIA_RECONEXAO_MS) {
+              const { count: anteriores } = await (supabaseAdmin as any)
+                .from("mensagens")
+                .select("id", { count: "exact", head: true })
+                .eq("company_id", companyId)
+                .eq("numero", number)
+                .lt("created_at", inserted?.created_at ?? new Date().toISOString());
+              if ((anteriores ?? 0) > 0) {
+                await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+                console.log("[whatsapp] carência pós-reconexão: contato antigo fica para a equipe", number);
+                return new Response("pos-reconexao", { status: 200 });
+              }
+            }
+          } catch (e: any) {
+            // Coluna ainda não existe no banco: segue sem a carência.
+            console.warn("[whatsapp] carência pós-reconexão indisponível:", e?.message);
+          }
+
           const { data: cfg } = await supabaseAdmin
             .from("agent_config")
             .select("*")
@@ -568,6 +609,22 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             return new Response("superseded", { status: 200 });
           }
 
+          // Alguém da equipe já respondeu (pelo celular ou pelo painel) depois desta mensagem:
+          // a IA não responde por cima. Antes só se olhava se havia mensagem nova DO CLIENTE.
+          const { data: respondida } = await supabaseAdmin
+            .from("mensagens")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("numero", number)
+            .eq("direcao", "saida")
+            .in("autor", ["humano", "ia"])
+            .gt("created_at", myCreatedAt)
+            .limit(1);
+          if (respondida && respondida.length > 0) {
+            await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+            return new Response("ja-respondida", { status: 200 });
+          }
+
           const result = await runAiReply({
             admin: supabaseAdmin, companyId, userId, instanceName, number, pushName, text, stages, cfg, isReceipt, receiptAnalysis,
             entradaFoiAudio: !!audioMsg,
@@ -670,6 +727,10 @@ async function reregistrarWebhookComToken(instanceName: string, token: string | 
 
 // Tempo sem atividade humana após o qual uma conversa pausada volta para a IA.
 const HUMAN_IDLE_RESUME_MS = 30 * 60_000;
+
+// Depois que a sessão do WhatsApp volta (QR Code, restart), por quanto tempo a IA atende só
+// primeiro contato. Dá tempo de o sync terminar e de a equipe olhar quem escreveu na queda.
+const CARENCIA_RECONEXAO_MS = 15 * 60_000;
 
 // Acima disso a IA não responde sozinha. Serve para a reconexão: o sync-chats reenvia
 // o que chegou durante a queda, e responder "bom dia" seis horas depois soa pior do que
