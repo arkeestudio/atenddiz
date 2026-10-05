@@ -453,7 +453,9 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
         `Use o fuso -03:00 nos horários (ex.: 2026-06-20T15:00:00-03:00). Esse marcador é interno e NÃO aparece pro cliente. ` +
         `Só emita o marcador quando o cliente confirmou claramente. Nunca invente horários que o cliente não disse. ` +
         `Só ofereça horários dentro das janelas disponíveis da empresa e nunca um horário da lista de ocupados abaixo. ` +
-        `O sistema confere a agenda antes de marcar: se o horário não estiver livre, ele avisa o cliente.`,
+        `O sistema confere a agenda antes de marcar: se o horário não estiver livre, ele avisa o cliente. ` +
+        `Se o cliente já tem visita marcada (está na ficha) e disser que NÃO vai, que quer desmarcar ou remarcar, escreva em uma nova linha exatamente [CANCELAR_VISITA] e ofereça outro horário. ` +
+        `Se ele só confirmar que vai, agradeça e NÃO marque de novo.`,
     );
     if (opts?.ocupados?.length) {
       blocos.push(
@@ -513,6 +515,8 @@ export function parseAiOutput(
   encaminharHumano: string | null;
   /** O que a IA escreveu em [SEGMENTO: ...], ainda sem casar com as opções da empresa. */
   segmento: string | null;
+  /** Cliente desmarcou/quer remarcar a visita já marcada. */
+  cancelarVisita: boolean;
 } {
   let text = raw || "";
   let stage: string | null = null;
@@ -520,6 +524,13 @@ export function parseAiOutput(
   let fotoUrl: string | null = null;
   let encaminharHumano: string | null = null;
   let segmento: string | null = null;
+  let cancelarVisita = false;
+
+  const cancelMatch = text.match(/\[\s*CANCELAR_VISITA\s*\]/i);
+  if (cancelMatch) {
+    cancelarVisita = true;
+    text = text.replace(cancelMatch[0], "").trim();
+  }
 
   // Pode vir repetido (o prompt pede em toda resposta): fica o último e some do texto.
   const segMatches = Array.from(text.matchAll(/\[\s*SEGMENTO\s*:\s*([^\]]+)\]/gi));
@@ -583,7 +594,7 @@ export function parseAiOutput(
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
     .slice(0, 3);
-  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento };
+  return { parts: parts.length ? parts : [text.trim()].filter(Boolean), stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento, cancelarVisita };
 }
 
 export function classifyStagePromptInstruction(): string {

@@ -61,6 +61,7 @@ import { Route as ApiPublicGoogleCallbackRouteImport } from './routes/api/public
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as AppAgenteAvancadoRouteImport } from './routes/app/agente.avancado'
 import { Route as ApiPublicBillingWebhookRouteImport } from './routes/api/public/billing/webhook'
+import { Route as ApiPublicHooksConfirmarVisitasRouteImport } from './routes/api/public/hooks/confirmar-visitas'
 import { Route as ApiPublicHooksProcessCampaignsRouteImport } from './routes/api/public/hooks/process-campaigns'
 import { Route as ApiPublicV1SplatRouteImport } from './routes/api/public/v1/$'
 
@@ -325,6 +326,12 @@ const ApiPublicBillingWebhookRoute = ApiPublicBillingWebhookRouteImport.update({
   path: '/api/public/billing/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksConfirmarVisitasRoute =
+  ApiPublicHooksConfirmarVisitasRouteImport.update({
+    id: '/api/public/hooks/confirmar-visitas',
+    path: '/api/public/hooks/confirmar-visitas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksProcessCampaignsRoute =
   ApiPublicHooksProcessCampaignsRouteImport.update({
     id: '/api/public/hooks/process-campaigns',
@@ -390,6 +397,7 @@ export interface FileRoutesByFullPath {
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/app/agente/avancado': typeof AppAgenteAvancadoRoute
   '/api/public/billing/webhook': typeof ApiPublicBillingWebhookRoute
+  '/api/public/hooks/confirmar-visitas': typeof ApiPublicHooksConfirmarVisitasRoute
   '/api/public/hooks/process-campaigns': typeof ApiPublicHooksProcessCampaignsRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
 }
@@ -444,6 +452,7 @@ export interface FileRoutesByTo {
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/app/agente/avancado': typeof AppAgenteAvancadoRoute
   '/api/public/billing/webhook': typeof ApiPublicBillingWebhookRoute
+  '/api/public/hooks/confirmar-visitas': typeof ApiPublicHooksConfirmarVisitasRoute
   '/api/public/hooks/process-campaigns': typeof ApiPublicHooksProcessCampaignsRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
 }
@@ -501,6 +510,7 @@ export interface FileRoutesById {
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/app/agente/avancado': typeof AppAgenteAvancadoRoute
   '/api/public/billing/webhook': typeof ApiPublicBillingWebhookRoute
+  '/api/public/hooks/confirmar-visitas': typeof ApiPublicHooksConfirmarVisitasRoute
   '/api/public/hooks/process-campaigns': typeof ApiPublicHooksProcessCampaignsRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
 }
@@ -559,6 +569,7 @@ export interface FileRouteTypes {
     | '/api/public/whatsapp-webhook'
     | '/app/agente/avancado'
     | '/api/public/billing/webhook'
+    | '/api/public/hooks/confirmar-visitas'
     | '/api/public/hooks/process-campaigns'
     | '/api/public/v1/$'
   fileRoutesByTo: FileRoutesByTo
@@ -613,6 +624,7 @@ export interface FileRouteTypes {
     | '/api/public/whatsapp-webhook'
     | '/app/agente/avancado'
     | '/api/public/billing/webhook'
+    | '/api/public/hooks/confirmar-visitas'
     | '/api/public/hooks/process-campaigns'
     | '/api/public/v1/$'
   id:
@@ -669,6 +681,7 @@ export interface FileRouteTypes {
     | '/api/public/whatsapp-webhook'
     | '/app/agente/avancado'
     | '/api/public/billing/webhook'
+    | '/api/public/hooks/confirmar-visitas'
     | '/api/public/hooks/process-campaigns'
     | '/api/public/v1/$'
   fileRoutesById: FileRoutesById
@@ -689,6 +702,7 @@ export interface RootRouteChildren {
   ApiPublicGoogleCallbackRoute: typeof ApiPublicGoogleCallbackRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiPublicBillingWebhookRoute: typeof ApiPublicBillingWebhookRoute
+  ApiPublicHooksConfirmarVisitasRoute: typeof ApiPublicHooksConfirmarVisitasRoute
   ApiPublicHooksProcessCampaignsRoute: typeof ApiPublicHooksProcessCampaignsRoute
   ApiPublicV1SplatRoute: typeof ApiPublicV1SplatRoute
 }
@@ -1059,6 +1073,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicBillingWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/confirmar-visitas': {
+      id: '/api/public/hooks/confirmar-visitas'
+      path: '/api/public/hooks/confirmar-visitas'
+      fullPath: '/api/public/hooks/confirmar-visitas'
+      preLoaderRoute: typeof ApiPublicHooksConfirmarVisitasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/process-campaigns': {
       id: '/api/public/hooks/process-campaigns'
       path: '/api/public/hooks/process-campaigns'
@@ -1201,6 +1222,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicGoogleCallbackRoute: ApiPublicGoogleCallbackRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiPublicBillingWebhookRoute: ApiPublicBillingWebhookRoute,
+  ApiPublicHooksConfirmarVisitasRoute: ApiPublicHooksConfirmarVisitasRoute,
   ApiPublicHooksProcessCampaignsRoute: ApiPublicHooksProcessCampaignsRoute,
   ApiPublicV1SplatRoute: ApiPublicV1SplatRoute,
 }

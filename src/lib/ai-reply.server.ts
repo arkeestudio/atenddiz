@@ -191,7 +191,7 @@ export async function runAiReply(opts: {
     console.error("[ai]", e?.message);
   }
 
-  const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
+  const { parts, stage, agendar, fotoUrl, pixValor, encaminharHumano, segmento, cancelarVisita } = parseAiOutput(rawReply, stages.map((s) => ({ nome: s.nome, tipo: s.tipo })));
   const finalParts = sanitizeAiParts(responderEmPartes ? parts : [parts.join(" ")]);
 
   // Gera PIX Copia e Cola instantâneo se a IA definiu valor de pagamento
@@ -242,6 +242,43 @@ export async function runAiReply(opts: {
   // próxima ação no card do funil e, se deu certo, a visita registrada — com ou sem Google.
   // Uma IA atendendo 30 pessoas não pode decidir sozinha sem deixar rastro para o humano.
   let agendaResultado: string | null = null;
+
+  // Cliente desmarcou (respondendo à confirmação do dia anterior, ou por conta própria): as
+  // visitas futuras dele saem da agenda, a equipe é avisada e o card pede remarcação. Se a IA
+  // marcou outra na mesma resposta, o bloco abaixo cria a nova em seguida.
+  if (cancelarVisita && (cardRow as any)?.id) {
+    try {
+      const { descreverHorario } = await import("@/lib/agenda.server");
+      const { data: futuras } = await supabaseAdmin
+        .from("agendamento")
+        .select("id, inicio, google_event_id")
+        .eq("company_id", companyId)
+        .eq("card_id", (cardRow as any).id)
+        .eq("status", "agendado")
+        .gte("fim", new Date().toISOString());
+      const lista = (futuras ?? []) as Array<{ id: string; inicio: string; google_event_id: string | null }>;
+      if (lista.length) {
+        await supabaseAdmin.from("agendamento").update({ status: "cancelado" }).in("id", lista.map((f) => f.id));
+        const quando = lista.map((f) => descreverHorario(new Date(f.inicio))).join(", ");
+        const noGoogle = lista.some((f) => f.google_event_id);
+        const nome = (cardRow as any)?.nome || pushName || number;
+        const fichaAtual = (cardRow as any)?.ficha && typeof (cardRow as any).ficha === "object" ? (cardRow as any).ficha : {};
+        const chaveVisita = Object.keys(fichaAtual).find((k) => /visita/i.test(k)) || "visita";
+        await supabaseAdmin
+          .from("crm_cards")
+          .update({ ficha: { ...fichaAtual, [chaveVisita]: "" }, proxima_acao: "Remarcar visita", follow_up: null } as any)
+          .eq("id", (cardRow as any).id);
+        await notaInterna(
+          supabaseAdmin, companyId, userId, number,
+          `🔁 ${nome} desmarcou a visita de ${quando}. A IA ofereceu outro horário.${noGoogle ? " O evento continua no Google Agenda — remova lá." : ""}`,
+        );
+        agendaResultado = `cancelada ${quando}`;
+      }
+    } catch (e: any) {
+      console.warn("[cancelar-visita]", e?.message);
+    }
+  }
+
   if (agendar && agendaLigada) {
     const { validarAgendamento, conflita, jaAgendado, descreverHorario, ocupadosLocais } = await import("@/lib/agenda.server");
     const v = validarAgendamento(agendar);
@@ -284,7 +321,7 @@ export async function runAiReply(opts: {
               status: "agendado",
             });
           }
-          agendaResultado = `criado ${quando}`;
+          agendaResultado = agendaResultado ? `${agendaResultado}; criado ${quando}` : `criado ${quando}`;
           // O card do funil mostra a próxima ação e a data: quem olha o Kanban vê "Visita
           // sex., 03/10 às 10:00" sem abrir a conversa.
           await supabaseAdmin
