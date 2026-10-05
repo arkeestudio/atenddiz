@@ -162,7 +162,9 @@ export function AppShell({
         {/* Sem barra no topo do conteúdo: status do WhatsApp, tema e usuário moram na barra
             lateral. São ~60px a mais de tela útil em toda página — em Conversas, é a diferença
             entre ver três mensagens a mais ou não. Com a barra recolhida o conteúdo vai mais largo. */}
-        <main className={`flex-1 px-4 pt-4 pb-28 md:px-6 md:pt-4 md:pb-6 w-full mx-auto min-w-0 ${recolhida ? "max-w-[1600px]" : "max-w-7xl"}`}>
+        {/* Sem teto de largura: em monitor largo o conteúdo usa a tela toda. Páginas de
+            leitura (onboarding, checkout) seguem com o próprio limite interno. */}
+        <main className="flex-1 px-4 pt-4 pb-28 md:px-6 md:pt-4 md:pb-6 w-full min-w-0">
           {children}
         </main>
       </div>

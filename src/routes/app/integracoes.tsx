@@ -44,7 +44,7 @@ function IntegracoesPage() {
   const isBusiness = plan.loading || plan.features.apiWebhooks;
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold flex items-center gap-2">Integrações <HelpTip text="Conecte seu sistema externo: webhooks de saída (eventos em tempo real), API pública para criar contatos/mensagens e rastreio UTM." /></h1>
         <p className="text-sm text-muted-foreground">Conecte o atendimento a outros sistemas via webhooks ou API pública.</p>

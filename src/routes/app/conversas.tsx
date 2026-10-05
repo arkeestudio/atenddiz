@@ -871,7 +871,7 @@ function ConversasPage() {
 
       {/* Celular: uma coluna só — lista OU conversa (com botão de voltar). Tablet: lista + conversa.
           Desktop largo: as três colunas. A ficha da direita só aparece onde cabe sem apertar. */}
-      <div className="grid md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_280px] 2xl:grid-cols-[320px_1fr_320px] border border-[color:var(--hairline)] rounded-2xl overflow-hidden h-[calc(100dvh-170px)] md:h-[calc(100vh-108px)] min-h-[420px] md:min-h-[500px] bg-[color:var(--panel)]">
+      <div className="grid md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_300px] 2xl:grid-cols-[340px_1fr_360px] border border-[color:var(--hairline)] rounded-2xl overflow-hidden h-[calc(100dvh-170px)] md:h-[calc(100vh-108px)] min-h-[420px] md:min-h-[500px] bg-[color:var(--panel)]">
         {/* LISTA */}
         <aside className={`${active ? "hidden md:flex" : "flex"} border-r border-[color:var(--hairline)] flex-col min-h-0 min-w-0 bg-[color:var(--panel)]`}>
           <div className="p-3 border-b border-[color:var(--hairline)]">

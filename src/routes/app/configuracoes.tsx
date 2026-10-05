@@ -339,7 +339,7 @@ function SegurancaTab() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4">
       <Card className="p-5 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>

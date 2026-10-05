@@ -365,7 +365,7 @@ function AgentePage() {
 
   // ---------- Tela com config: resumo + ajustes finos + teste ----------
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
