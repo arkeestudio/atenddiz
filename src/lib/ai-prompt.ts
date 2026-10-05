@@ -1,4 +1,4 @@
-import { campoSegmento, normalizeFichaCampos } from "./ficha-campos";
+import { SEGMENTO_NAO_IDENTIFICADO, campoSegmento, normalizeFichaCampos } from "./ficha-campos";
 
 export interface ProdutoBrief {
   nome: string;
@@ -454,10 +454,12 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
   // na conversa, na lista e no Kanban enquanto a conversa ainda está acontecendo.
   const segmentoCampo = campoSegmento(fichaCampos);
   if (segmentoCampo) {
+    // "Não identificado" é da equipe, para fechar conversa sem idade; a IA nunca escolhe.
+    const opcoesIa = segmentoCampo.opcoes!.filter((o) => o !== SEGMENTO_NAO_IDENTIFICADO);
     blocos.push(
       `SEGMENTO DO LEAD: assim que souber a idade ou a série da criança, escreva em uma nova linha, exatamente:
-[SEGMENTO: ${segmentoCampo.opcoes!.join(" | ")}]
-escolhendo UMA opção, a que corresponde à criança. Repita o marcador em toda resposta enquanto souber. Marcador interno, NÃO aparece para o cliente. Se ainda não souber, não escreva. Família com filhos em segmentos diferentes: use o da criança sobre a qual estão falando agora.`,
+[SEGMENTO: ${opcoesIa.join(" | ")}]
+escolhendo UMA opção, a que corresponde à criança. Repita o marcador em toda resposta enquanto souber. Marcador interno, NÃO aparece para o cliente. Se ainda não souber, não escreva nada (nunca escreva "${SEGMENTO_NAO_IDENTIFICADO}"). Família com filhos em segmentos diferentes: use o da criança sobre a qual estão falando agora.`,
     );
   }
 

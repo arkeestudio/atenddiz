@@ -453,6 +453,22 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             .eq("numero", number)
             .maybeSingle();
           if (pauseRow?.pausado) {
+            // Na fila humana (transferido pela IA, pedido de atendente, IA desligada) a IA NÃO
+            // reassume sozinha: se uma mãe escreveu sobre febre e ninguém abriu em 30 min, a
+            // resposta certa é a fila continuar acesa no painel — não a IA voltar a atender um
+            // caso que ela mesma mandou para uma pessoa. O retorno automático abaixo é só para
+            // o "Assumir" manual que a equipe esqueceu ligado.
+            const { data: cardFila } = await (supabaseAdmin as any)
+              .from("crm_cards")
+              .select("aguardando_humano")
+              .eq("company_id", companyId)
+              .eq("numero", number)
+              .maybeSingle();
+            if (cardFila?.aguardando_humano) {
+              await upsertCard(supabaseAdmin, companyId, userId, number, pushName, text, stages);
+              return new Response("paused-contact-fila", { status: 200 });
+            }
+
             // Atendimento humano expira: sem atividade humana (pausa ou mensagem de atendente)
             // há HUMAN_IDLE_RESUME_MS, a IA reassume e responde esta mensagem.
             const { data: lastHuman } = await supabaseAdmin

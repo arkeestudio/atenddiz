@@ -18,29 +18,38 @@ export type FichaCampo = {
 // Para que segmento é este lead. A IA preenche assim que sabe a idade/série e o sistema
 // mostra na conversa, na lista, no Kanban e na planilha. O instituto é um; o atendimento
 // precisa saber se está falando de berçário ou de fundamental.
+// "Não identificado" existe para a conversa que termina antes de a IA descobrir a idade:
+// sem essa opção o registro força uma classificação errada. A IA que responde NUNCA a
+// escolhe (ela simplesmente não marca); quem fecha a conversa sem saber marca à mão.
+export const SEGMENTO_NAO_IDENTIFICADO = "Não identificado";
 export const SEGMENTO_PADRAO: FichaCampo = {
   id: "segmento",
   label: "Segmento",
   tipo: "opcoes",
-  opcoes: ["Berçário", "Educação Infantil", "Fundamental 1", "Fundamental 2"],
+  opcoes: ["Berçário", "Educação Infantil", "Fundamental 1", "Fundamental 2", SEGMENTO_NAO_IDENTIFICADO],
   dica: "Pela idade ou série da criança",
 };
 
+// Lista revisada com a escola (out/2026): entra o que a coordenação precisa receber antes
+// da matrícula (necessidades específicas, unidade da visita, aceite de LGPD) e sai o que era
+// resíduo de e-commerce (data de pagamento). A IA não negocia valor: o campo é "apresentado".
 export const FICHA_CAMPOS_PADRAO: FichaCampo[] = [
-  SEGMENTO_PADRAO,
   { id: "responsavel", label: "Nome do responsável", dica: "Mãe, pai ou quem está conversando" },
   { id: "crianca", label: "Nome da criança" },
   { id: "nascimento", label: "Data de nascimento", dica: "Só se a família disser. Ex: 03/2026" },
-  { id: "idade", label: "Idade", dica: "Ex: 8 meses, 3 anos" },
-  { id: "turma", label: "Turma de interesse", dica: "Berçário I, Berçário II ou Maternal" },
-  { id: "turno", label: "Turno", dica: "Integral ou meio período (manhã/tarde)" },
+  { id: "idade", label: "Idade", dica: "Ex: 8 meses, 3 anos, 8 anos (3º ano)" },
+  SEGMENTO_PADRAO,
+  { id: "turma", label: "Turma de interesse", dica: "Berçário I, Berçário II, Maternal, Jardim ou a série do fundamental" },
+  { id: "periodo", label: "Período ou horário desejado", dica: "Berçário e infantil: horário de entrada e saída. Fundamental: manhã ou tarde" },
   { id: "atipico", label: "Criança atípica", dica: "Só se a família mencionar. Anote o que ela contou" },
-  { id: "visita", label: "Data da visita", dica: "Data e horário combinados, se houver" },
+  { id: "necessidades", label: "Necessidades específicas", dica: "Alergia, restrição alimentar, medicamento, suporte de inclusão — só o que a família contar" },
+  { id: "unidade_visita", label: "Unidade da visita", dica: "Qual unidade a família vai visitar" },
+  { id: "visita", label: "Data e horário da visita", dica: "Combinados, se houver. Ex: 24/09 às 10h" },
   { id: "inicio", label: "Início da adaptação", dica: "Quando pretende começar" },
-  { id: "valor_combinado", label: "Valor combinado", somenteEquipe: true },
-  { id: "data_pagamento", label: "Data de pagamento", somenteEquipe: true },
-  { id: "como_conheceu", label: "Como conheceu" },
+  { id: "valor_apresentado", label: "Valor apresentado", somenteEquipe: true },
+  { id: "como_conheceu", label: "Como conheceu o Instituto" },
   { id: "duvidas", label: "Dúvidas e preocupações" },
+  { id: "lgpd", label: "Aceite de LGPD", tipo: "opcoes", opcoes: ["Sim", "Não"], dica: "Sim quando a família autorizou o uso dos dados neste atendimento" },
 ];
 
 export function normalizeFichaCampos(raw: unknown): FichaCampo[] {
