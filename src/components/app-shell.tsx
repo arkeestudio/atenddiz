@@ -18,6 +18,7 @@ import type { CompanyRow, Membership } from "@/lib/tenant";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
 import { useAguardandoHumano } from "@/hooks/use-aguardando-humano";
 import { useAvisosSistema } from "@/hooks/use-avisos-sistema";
+import { useLembretesVisitas } from "@/hooks/use-lembretes-visitas";
 
 type NavItem = {
   to: string;
@@ -26,6 +27,8 @@ type NavItem = {
   adminOnly?: boolean;
   tag?: string;
   badge?: boolean;
+  /** Mostra quantas visitas ainda faltam hoje (tom informativo, sem piscar). */
+  badgeAgenda?: boolean;
 };
 
 const sections: { label: string; items: NavItem[] }[] = [
@@ -35,7 +38,7 @@ const sections: { label: string; items: NavItem[] }[] = [
       { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/app/conversas", label: "Conversas", icon: Inbox, badge: true },
       { to: "/app/crm", label: "CRM Kanban", icon: KanbanSquare },
-      { to: "/app/agenda", label: "Agenda", icon: CalendarDays },
+      { to: "/app/agenda", label: "Agenda", icon: CalendarDays, badgeAgenda: true },
       { to: "/app/planilha", label: "Planilha de Leads", icon: Table2 },
       { to: "/app/campanhas", label: "Campanhas", icon: Megaphone, adminOnly: true },
       { to: "/app/agente", label: "Agente IA", icon: Bot, tag: "IA", adminOnly: true },
@@ -72,6 +75,7 @@ export function AppShell({
   const navigate = useNavigate();
   const aguardandoHumano = useAguardandoHumano(company?.id);
   useAvisosSistema(company?.id);
+  const { hoje: visitasHoje } = useLembretesVisitas(company?.id);
 
   // Começa aberta no servidor e lê a preferência no cliente: sem acesso ao localStorage
   // durante o SSR, e um piscar de 190px na primeira pintura é melhor que hidratação divergente.
@@ -156,6 +160,7 @@ export function AppShell({
           roleLabel={roleLabel}
           signOut={signOut}
           aguardandoHumano={aguardandoHumano}
+          visitasHoje={visitasHoje}
           recolhida={recolhida}
           alternar={alternarBarra}
         />
@@ -175,7 +180,7 @@ export function AppShell({
 }
 
 function Sidebar({
-  loc, company, isSuperAdmin, isAdmin, primary, userName, email, roleLabel, signOut, aguardandoHumano, recolhida, alternar,
+  loc, company, isSuperAdmin, isAdmin, primary, userName, email, roleLabel, signOut, aguardandoHumano, visitasHoje, recolhida, alternar,
 }: any) {
   return (
     <aside
@@ -232,7 +237,8 @@ function Sidebar({
             <div className="flex flex-col gap-1">
               {sec.items.filter((i) => !i.adminOnly || isAdmin).map((item) => (
                 <NavLink key={item.to} item={item} active={loc.pathname.startsWith(item.to)} primary={primary}
-                  count={item.badge ? aguardandoHumano : 0} compacto={recolhida} />
+                  count={item.badge ? aguardandoHumano : item.badgeAgenda ? visitasHoje : 0}
+                  tom={item.badgeAgenda ? "info" : "alerta"} compacto={recolhida} />
               ))}
             </div>
           </div>
@@ -297,15 +303,22 @@ function Sidebar({
   );
 }
 
-function NavLink({ item, active, primary, count = 0, compacto = false }: { item: NavItem; active: boolean; primary: string; count?: number; compacto?: boolean }) {
+function NavLink({ item, active, primary, count = 0, compacto = false, tom = "alerta" }: {
+  item: NavItem; active: boolean; primary: string; count?: number; compacto?: boolean; tom?: "alerta" | "info";
+}) {
   const Icon = item.icon;
+  // Alerta (fila humana) pisca em âmbar; informativo (visitas de hoje) é da cor da marca, parado.
+  const seloClasse = tom === "alerta"
+    ? "bg-amber-500 text-black animate-pulse"
+    : "bg-[color:var(--brand)] text-primary-foreground";
+  const seloTitulo = tom === "alerta" ? `${count} aguardando atendimento humano` : `${count} ${count === 1 ? "visita" : "visitas"} hoje`;
   // Recolhida: só o ícone, centralizado, com o nome no título (tooltip do navegador) e o
   // contador de "aguardando humano" como bolinha no canto — a informação não some, encolhe.
   if (compacto) {
     return (
       <Link
         to={item.to}
-        title={count > 0 ? `${item.label} · ${count} aguardando atendimento humano` : item.label}
+        title={count > 0 ? `${item.label} · ${seloTitulo}` : item.label}
         aria-label={item.label}
         className={`relative grid place-items-center size-12 mx-auto rounded-lg transition-all ${
           active ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-[color:var(--panel-2)]"
@@ -314,7 +327,7 @@ function NavLink({ item, active, primary, count = 0, compacto = false }: { item:
       >
         <Icon className="size-[20px]" style={active ? { color: primary } : undefined} />
         {count > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full grid place-items-center text-[10px] font-bold bg-amber-500 text-black animate-pulse">
+          <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full grid place-items-center text-[10px] font-bold ${seloClasse}`}>
             {count}
           </span>
         )}
@@ -348,8 +361,8 @@ function NavLink({ item, active, primary, count = 0, compacto = false }: { item:
       <span className="flex-1 truncate">{item.label}</span>
       {count > 0 && (
         <span
-          title={`${count} aguardando atendimento humano`}
-          className="min-w-[20px] h-5 px-1.5 rounded-full grid place-items-center text-[11px] font-bold bg-amber-500 text-black animate-pulse"
+          title={seloTitulo}
+          className={`min-w-[20px] h-5 px-1.5 rounded-full grid place-items-center text-[11px] font-bold ${seloClasse}`}
         >
           {count}
         </span>
