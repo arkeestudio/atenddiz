@@ -9,8 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CalendarDays, CheckCircle2, XCircle, MessageSquareText, RefreshCw, RotateCcw, Plus, Loader2 } from "lucide-react";
-import { criarAgendamento } from "@/lib/agenda.functions";
+import { CalendarDays, CheckCircle2, XCircle, MessageSquareText, RefreshCw, RotateCcw, Plus, Loader2, Pencil, Trash2 } from "lucide-react";
+import { criarAgendamento, editarAgendamento, excluirAgendamento } from "@/lib/agenda.functions";
 
 // Visitas marcadas pela IA (ou pela equipe) num lugar só. A IA marca, avisa na conversa e
 // no painel — mas quem precisa olhar "o que tem amanhã?" não pode depender de ter visto o
@@ -65,6 +65,23 @@ function AgendaPage() {
   const [visitas, setVisitas] = useState<Visita[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [novaAberta, setNovaAberta] = useState(false);
+  const [editando, setEditando] = useState<Visita | null>(null);
+  const excluir = useServerFn(excluirAgendamento);
+
+  async function excluirVisita(v: Visita) {
+    const ok = window.confirm(
+      `Excluir a visita de ${v.nome || v.numero || "contato"} em ${rotuloDia(chaveDia(new Date(v.inicio)))} às ${hora(v.inicio)}?\n\n` +
+        `Diferente de cancelar, ela some da agenda${v.google_event_id ? " e do Google Agenda" : ""}. Não dá para desfazer.`,
+    );
+    if (!ok) return;
+    try {
+      const r = await excluir({ data: { id: v.id } });
+      toast.success(`Visita excluída.${r.google === "falhou" ? " O Google Agenda não removeu — confira lá." : ""}`);
+      void carregar();
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível excluir.");
+    }
+  }
 
   const carregar = useCallback(async () => {
     if (!companyId) return;
@@ -165,10 +182,11 @@ function AgendaPage() {
 
       {companyId && (
         <NovaVisitaDialog
-          aberta={novaAberta}
-          onClose={() => setNovaAberta(false)}
+          aberta={novaAberta || !!editando}
+          inicial={editando}
+          onClose={() => { setNovaAberta(false); setEditando(null); }}
           companyId={companyId}
-          onCriada={() => { setNovaAberta(false); void carregar(); }}
+          onCriada={() => { setNovaAberta(false); setEditando(null); void carregar(); }}
         />
       )}
 
@@ -246,6 +264,12 @@ function AgendaPage() {
                             <RotateCcw className="size-4" />
                           </Button>
                         )}
+                        <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground" title="Editar (remarcar / renomear)" onClick={() => setEditando(v)}>
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-red-600" title="Excluir de vez" onClick={() => void excluirVisita(v)}>
+                          <Trash2 className="size-4" />
+                        </Button>
                       </div>
                     </li>
                   );
@@ -261,10 +285,13 @@ function AgendaPage() {
 
 // Visita marcada à mão pela equipe: entra na mesma tabela que a IA consulta, então vira
 // bloqueio para ela; com contato ligado, a data vai para a ficha e o Kanban.
-function NovaVisitaDialog({ aberta, onClose, companyId, onCriada }: {
-  aberta: boolean; onClose: () => void; companyId: string; onCriada: () => void;
+// Mesmo diálogo para criar e para editar (`inicial` preenchido). Na edição o contato não
+// muda — trocar a família é excluir e criar outra, de propósito.
+function NovaVisitaDialog({ aberta, inicial, onClose, companyId, onCriada }: {
+  aberta: boolean; inicial?: Visita | null; onClose: () => void; companyId: string; onCriada: () => void;
 }) {
   const criar = useServerFn(criarAgendamento);
+  const editar = useServerFn(editarAgendamento);
   const hoje = chaveDia(new Date());
   const [data, setData] = useState(hoje);
   const [hora, setHora] = useState("10:00");
@@ -273,9 +300,19 @@ function NovaVisitaDialog({ aberta, onClose, companyId, onCriada }: {
   const [contato, setContato] = useState("");
   const [contatos, setContatos] = useState<Array<{ numero: string; nome: string }>>([]);
   const [salvando, setSalvando] = useState(false);
+  const edicao = !!inicial;
 
   useEffect(() => {
     if (!aberta) return;
+    if (inicial) {
+      const ini = new Date(inicial.inicio);
+      setData(chaveDia(ini));
+      setHora(new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(ini));
+      setDuracao(Math.max(5, Math.round((+new Date(inicial.fim) - +ini) / 60_000)));
+      setTitulo(inicial.titulo || "Visita com a coordenação");
+      setContato(inicial.nome || inicial.numero || "");
+      return;
+    }
     setData(hoje); setHora("10:00"); setDuracao(40); setTitulo("Visita com a coordenação"); setContato("");
     void (async () => {
       const { data: rows } = await (supabase as any)
@@ -286,7 +323,7 @@ function NovaVisitaDialog({ aberta, onClose, companyId, onCriada }: {
         .limit(300);
       setContatos(((rows ?? []) as any[]).map((r) => ({ numero: r.numero, nome: r.nome || r.nome_whatsapp || r.numero })));
     })();
-  }, [aberta, companyId, hoje]);
+  }, [aberta, companyId, hoje, inicial]);
 
   // O contato pode ser escolhido na lista ("Nome — número") ou digitado só o número.
   function numeroDoContato(): string | null {
@@ -303,27 +340,45 @@ function NovaVisitaDialog({ aberta, onClose, companyId, onCriada }: {
     // Monta o ISO no fuso de Brasília; o servidor valida (data existe, não passou, etc.).
     const inicio = new Date(`${data}T${hora}:00-03:00`);
     const fim = new Date(inicio.getTime() + duracao * 60_000);
+
+    if (edicao && inicial && !ignorarConflito) {
+      const de = `${rotuloDia(chaveDia(new Date(inicial.inicio)))} às ${hora_(inicial.inicio)}`;
+      const para = `${rotuloDia(data)} às ${hora}`;
+      const mudouHorario = +new Date(inicial.inicio) !== inicio.getTime() || +new Date(inicial.fim) !== fim.getTime();
+      const msg = mudouHorario
+        ? `Alterar a visita de ${inicial.nome || "contato"}:\n\n${de}  →  ${para}\n\n${inicial.google_event_id ? "O Google Agenda será atualizado. " : ""}Confirmar?`
+        : `Salvar as alterações da visita de ${inicial.nome || "contato"}?`;
+      if (!window.confirm(msg)) return;
+    }
+
     setSalvando(true);
     try {
-      const r = await criar({ data: { inicio: inicio.toISOString(), fim: fim.toISOString(), titulo, numero: numeroDoContato(), ignorarConflito } });
+      const r = edicao && inicial
+        ? await editar({ data: { id: inicial.id, inicio: inicio.toISOString(), fim: fim.toISOString(), titulo, ignorarConflito } })
+        : await criar({ data: { inicio: inicio.toISOString(), fim: fim.toISOString(), titulo, numero: numeroDoContato(), ignorarConflito } });
       if (!r.ok && r.conflito) {
-        const seguir = window.confirm(`Já existe algo na agenda em ${r.quando}. Marcar mesmo assim?`);
+        const seguir = window.confirm(`Já existe algo na agenda em ${r.quando}. ${edicao ? "Remarcar" : "Marcar"} mesmo assim?`);
         if (seguir) return void salvar(true);
         return;
       }
-      toast.success(`Visita marcada para ${r.quando}${r.google ? " — já está no Google Agenda" : ""}.`);
+      if (edicao) {
+        toast.success(`Visita alterada para ${r.quando}.${(r as any).google === "falhou" ? " O Google Agenda não atualizou — confira lá." : ""}`);
+      } else {
+        toast.success(`Visita marcada para ${r.quando}${(r as any).google ? " — já está no Google Agenda" : ""}.`);
+      }
       onCriada();
     } catch (e: any) {
-      toast.error(e?.message || "Não foi possível marcar.");
+      toast.error(e?.message || (edicao ? "Não foi possível alterar." : "Não foi possível marcar."));
     } finally {
       setSalvando(false);
     }
   }
+  const hora_ = (iso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
   return (
     <Dialog open={aberta} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Adicionar visita</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{edicao ? "Editar visita" : "Adicionar visita"}</DialogTitle></DialogHeader>
         <div className="space-y-3 text-[13px]">
           <div className="grid grid-cols-[1fr_110px_120px] gap-2">
             <div className="space-y-1">
@@ -347,21 +402,32 @@ function NovaVisitaDialog({ aberta, onClose, companyId, onCriada }: {
             <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Visita com a coordenação" className="h-9" />
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px]">Contato (opcional)</Label>
-            <Input list="agenda-contatos" value={contato} onChange={(e) => setContato(e.target.value)}
-              placeholder="Nome do lead ou telefone" className="h-9" />
-            <datalist id="agenda-contatos">
-              {contatos.map((c) => <option key={c.numero} value={`${c.nome} — ${c.numero}`} />)}
-            </datalist>
+            <Label className="text-[11px]">{edicao ? "Contato" : "Contato (opcional)"}</Label>
+            {edicao ? (
+              <div className="h-9 flex items-center px-3 rounded-md border border-input bg-[color:var(--panel-2)] text-[13px] text-muted-foreground">
+                {contato || "Sem contato ligado"}
+              </div>
+            ) : (
+              <>
+                <Input list="agenda-contatos" value={contato} onChange={(e) => setContato(e.target.value)}
+                  placeholder="Nome do lead ou telefone" className="h-9" />
+                <datalist id="agenda-contatos">
+                  {contatos.map((c) => <option key={c.numero} value={`${c.nome} — ${c.numero}`} />)}
+                </datalist>
+              </>
+            )}
             <p className="text-[11px] text-muted-foreground">
-              Com contato, a visita entra na ficha e no card dele — e a IA não oferece outra.
+              {edicao
+                ? "Para trocar a família, exclua esta visita e crie outra."
+                : "Com contato, a visita entra na ficha e no card dele — e a IA não oferece outra."}
             </p>
           </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={salvando}>Cancelar</Button>
           <Button onClick={() => void salvar()} disabled={salvando}>
-            {salvando ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <CalendarDays className="size-4 mr-1.5" />} Marcar
+            {salvando ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : edicao ? <Pencil className="size-4 mr-1.5" /> : <CalendarDays className="size-4 mr-1.5" />}
+            {edicao ? "Salvar alterações" : "Marcar"}
           </Button>
         </DialogFooter>
       </DialogContent>

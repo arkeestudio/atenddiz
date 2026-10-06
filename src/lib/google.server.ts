@@ -74,6 +74,41 @@ export async function listarOcupados(
   return busy.map((b) => ({ inicio: b.start, fim: b.end }));
 }
 
+/** Altera horário/título de um evento já criado por nós. Lança se a Google recusar. */
+export async function atualizarEventoGoogle(
+  admin: any,
+  companyId: string,
+  eventId: string,
+  data: { titulo: string; inicio: string; fim: string },
+) {
+  const { data: gi } = await admin.from("google_integration").select("*").eq("company_id", companyId).maybeSingle();
+  if (!gi?.conectado) throw new Error("Google Agenda não conectado");
+  const accessToken = await tokenDeAcesso(admin, gi);
+  const calendarId = gi.calendar_id || "primary";
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ summary: data.titulo, start: { dateTime: data.inicio }, end: { dateTime: data.fim } }),
+    },
+  );
+  if (!res.ok) throw new Error(`Google API: ${res.status}`);
+}
+
+/** Remove um evento criado por nós. 404/410 (já não existe) conta como sucesso. */
+export async function excluirEventoGoogle(admin: any, companyId: string, eventId: string) {
+  const { data: gi } = await admin.from("google_integration").select("*").eq("company_id", companyId).maybeSingle();
+  if (!gi?.conectado) throw new Error("Google Agenda não conectado");
+  const accessToken = await tokenDeAcesso(admin, gi);
+  const calendarId = gi.calendar_id || "primary";
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res.ok && res.status !== 404 && res.status !== 410) throw new Error(`Google API: ${res.status}`);
+}
+
 // Cria evento no Google Agenda usando os tokens armazenados da empresa.
 // Refresca o access_token se expirou. Insere também na tabela agendamento.
 export async function createCalendarEventForCompany(
