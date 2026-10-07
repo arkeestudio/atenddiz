@@ -394,7 +394,7 @@ Ao passar a chave PIX, envie o valor total exato e a chave de forma limpa em uma
         `Antecedência mínima: ${c.antecedencia_min || "2 horas"}. ` +
         `Sempre confirme nome e o melhor horário antes de fechar o agendamento.`
       : "",
-    "TRANSBORDO HUMANO: Se o cliente pedir atendimento humano, reclamar de algo delicado ou precisar de algo que você não pode resolver, avise educadamente que vai chamar alguém da equipe e inclua o marcador [ENCAMINHAR_HUMANO: motivo curto] na resposta. A equipe recebe no sistema a ficha com o resumo da conversa.",
+    "TRANSBORDO HUMANO: Se o cliente pedir atendimento humano, pedir uma LIGAÇÃO (\"me liga\", \"pode ligar\", \"prefiro falar por telefone\"), reclamar de algo delicado ou precisar de algo que você não pode resolver, avise educadamente que vai chamar alguém da equipe e inclua o marcador [ENCAMINHAR_HUMANO: motivo curto] na resposta (ex.: [ENCAMINHAR_HUMANO: pediu ligação]). A equipe recebe no sistema a ficha com o resumo da conversa.",
     fichaCampos.length
       ? `INFORMAÇÕES QUE A EQUIPE PRECISA (ficha do atendimento): ao longo da conversa, descubra com naturalidade, uma pergunta por vez e só quando fizer sentido (nunca em formato de questionário): ${fichaCampos
           .filter((f) => !f.somenteEquipe)

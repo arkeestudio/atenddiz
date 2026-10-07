@@ -73,6 +73,8 @@ function AgentePage() {
   const [responderEmPartes, setResponderEmPartes] = useState(true);
   const [vozResposta, setVozResposta] = useState<ModoVoz>("nunca");
   const [vozNome, setVozNome] = useState(VOZ_PADRAO);
+  // Só entra no salvar se a coluna existir no banco (senão o Salvar inteiro falharia).
+  const [reengajamentoAtivo, setReengajamentoAtivo] = useState<boolean | null>(null);
   const [baseConhecimento, setBaseConhecimento] = useState("");
   const [horarios, setHorarios] = useState<BusinessHours>(defaultHours());
   const [msgFora, setMsgFora] = useState("Olá! No momento estamos fora do horário de atendimento. Retornamos em breve.");
@@ -97,6 +99,7 @@ function AgentePage() {
       setTamanhoResposta((data.tamanho_resposta as any) || "curtas");
       setVozResposta(((data as any).voz_resposta as ModoVoz) || "nunca");
       setVozNome((data as any).voz_nome || VOZ_PADRAO);
+      setReengajamentoAtivo("reengajamento_ativo" in (data as any) ? !!(data as any).reengajamento_ativo : null);
       setTelefone(data.telefone_transferencia || "");
       setPalavraPausar(data.palavra_pausar || "/pausar");
       setPalavraDespausar(data.palavra_despausar || "/despausar");
@@ -204,6 +207,7 @@ function AgentePage() {
       responder_em_partes: responderEmPartes,
       voz_resposta: vozResposta,
       voz_nome: vozNome,
+      ...(reengajamentoAtivo === null ? {} : { reengajamento_ativo: reengajamentoAtivo }),
       base_conhecimento: baseConhecimento,
       horarios_atendimento: horarios,
       mensagem_fora_horario: msgFora,
@@ -738,6 +742,18 @@ function AgentePage() {
                 <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3">
                   <span className="text-sm font-medium">Responder em partes (1-3 bolhas)</span>
                   <Switch checked={responderEmPartes} onCheckedChange={setResponderEmPartes} />
+                </div>
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">Reengajar antes de a janela de 24h fechar</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Se o cliente ficou em silêncio depois da resposta, ~22h depois da última mensagem dele a IA pergunta se ficou
+                      alguma dúvida e oferece ligação da equipe. Uma vez por conversa, só em horário comercial, nunca para lead
+                      fechado ou na fila humana.
+                      {reengajamentoAtivo === null && <span className="block text-amber-600 dark:text-amber-400 mt-1">Precisa da migração <code>reengajamento_ativo</code> no banco.</span>}
+                    </div>
+                  </div>
+                  <Switch checked={!!reengajamentoAtivo} disabled={reengajamentoAtivo === null} onCheckedChange={(v) => setReengajamentoAtivo(v)} />
                 </div>
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-3 space-y-3">
                   <div className="space-y-1.5">

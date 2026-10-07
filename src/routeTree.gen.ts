@@ -63,6 +63,7 @@ import { Route as AppAgenteAvancadoRouteImport } from './routes/app/agente.avanc
 import { Route as ApiPublicBillingWebhookRouteImport } from './routes/api/public/billing/webhook'
 import { Route as ApiPublicHooksConfirmarVisitasRouteImport } from './routes/api/public/hooks/confirmar-visitas'
 import { Route as ApiPublicHooksProcessCampaignsRouteImport } from './routes/api/public/hooks/process-campaigns'
+import { Route as ApiPublicHooksReengajarJanelaRouteImport } from './routes/api/public/hooks/reengajar-janela'
 import { Route as ApiPublicV1SplatRouteImport } from './routes/api/public/v1/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -338,6 +339,12 @@ const ApiPublicHooksProcessCampaignsRoute =
     path: '/api/public/hooks/process-campaigns',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksReengajarJanelaRoute =
+  ApiPublicHooksReengajarJanelaRouteImport.update({
+    id: '/api/public/hooks/reengajar-janela',
+    path: '/api/public/hooks/reengajar-janela',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicV1SplatRoute = ApiPublicV1SplatRouteImport.update({
   id: '/api/public/v1/$',
   path: '/api/public/v1/$',
@@ -399,6 +406,7 @@ export interface FileRoutesByFullPath {
   '/api/public/billing/webhook': typeof ApiPublicBillingWebhookRoute
   '/api/public/hooks/confirmar-visitas': typeof ApiPublicHooksConfirmarVisitasRoute
   '/api/public/hooks/process-campaigns': typeof ApiPublicHooksProcessCampaignsRoute
+  '/api/public/hooks/reengajar-janela': typeof ApiPublicHooksReengajarJanelaRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
 }
 export interface FileRoutesByTo {
@@ -454,6 +462,7 @@ export interface FileRoutesByTo {
   '/api/public/billing/webhook': typeof ApiPublicBillingWebhookRoute
   '/api/public/hooks/confirmar-visitas': typeof ApiPublicHooksConfirmarVisitasRoute
   '/api/public/hooks/process-campaigns': typeof ApiPublicHooksProcessCampaignsRoute
+  '/api/public/hooks/reengajar-janela': typeof ApiPublicHooksReengajarJanelaRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
 }
 export interface FileRoutesById {
@@ -512,6 +521,7 @@ export interface FileRoutesById {
   '/api/public/billing/webhook': typeof ApiPublicBillingWebhookRoute
   '/api/public/hooks/confirmar-visitas': typeof ApiPublicHooksConfirmarVisitasRoute
   '/api/public/hooks/process-campaigns': typeof ApiPublicHooksProcessCampaignsRoute
+  '/api/public/hooks/reengajar-janela': typeof ApiPublicHooksReengajarJanelaRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
 }
 export interface FileRouteTypes {
@@ -571,6 +581,7 @@ export interface FileRouteTypes {
     | '/api/public/billing/webhook'
     | '/api/public/hooks/confirmar-visitas'
     | '/api/public/hooks/process-campaigns'
+    | '/api/public/hooks/reengajar-janela'
     | '/api/public/v1/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -626,6 +637,7 @@ export interface FileRouteTypes {
     | '/api/public/billing/webhook'
     | '/api/public/hooks/confirmar-visitas'
     | '/api/public/hooks/process-campaigns'
+    | '/api/public/hooks/reengajar-janela'
     | '/api/public/v1/$'
   id:
     | '__root__'
@@ -683,6 +695,7 @@ export interface FileRouteTypes {
     | '/api/public/billing/webhook'
     | '/api/public/hooks/confirmar-visitas'
     | '/api/public/hooks/process-campaigns'
+    | '/api/public/hooks/reengajar-janela'
     | '/api/public/v1/$'
   fileRoutesById: FileRoutesById
 }
@@ -704,6 +717,7 @@ export interface RootRouteChildren {
   ApiPublicBillingWebhookRoute: typeof ApiPublicBillingWebhookRoute
   ApiPublicHooksConfirmarVisitasRoute: typeof ApiPublicHooksConfirmarVisitasRoute
   ApiPublicHooksProcessCampaignsRoute: typeof ApiPublicHooksProcessCampaignsRoute
+  ApiPublicHooksReengajarJanelaRoute: typeof ApiPublicHooksReengajarJanelaRoute
   ApiPublicV1SplatRoute: typeof ApiPublicV1SplatRoute
 }
 
@@ -1087,6 +1101,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksProcessCampaignsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/reengajar-janela': {
+      id: '/api/public/hooks/reengajar-janela'
+      path: '/api/public/hooks/reengajar-janela'
+      fullPath: '/api/public/hooks/reengajar-janela'
+      preLoaderRoute: typeof ApiPublicHooksReengajarJanelaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/v1/$': {
       id: '/api/public/v1/$'
       path: '/api/public/v1/$'
@@ -1224,6 +1245,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicBillingWebhookRoute: ApiPublicBillingWebhookRoute,
   ApiPublicHooksConfirmarVisitasRoute: ApiPublicHooksConfirmarVisitasRoute,
   ApiPublicHooksProcessCampaignsRoute: ApiPublicHooksProcessCampaignsRoute,
+  ApiPublicHooksReengajarJanelaRoute: ApiPublicHooksReengajarJanelaRoute,
   ApiPublicV1SplatRoute: ApiPublicV1SplatRoute,
 }
 export const routeTree = rootRouteImport
