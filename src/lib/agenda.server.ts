@@ -92,16 +92,34 @@ export async function ocupadosLocais(
   return ((data ?? []) as Array<{ inicio: string; fim: string }>).map((r) => ({ inicio: r.inicio, fim: r.fim }));
 }
 
-/** Já existe agendamento deste contato no mesmo horário? (a IA às vezes repete o marcador) */
-export async function jaAgendado(admin: any, companyId: string, cardId: string | null, inicio: Date): Promise<boolean> {
-  if (!cardId) return false;
+export type VisitaAtiva = { id: string; inicio: string; fim: string; titulo: string; google_event_id: string | null };
+
+/**
+ * A visita futura ainda de pé deste contato — uma família tem uma visita por vez. É ela que a
+ * IA remarca quando o cliente muda o horário (ou ignora, se ele só repetiu o mesmo), em vez de
+ * criar outra ao lado.
+ */
+export async function visitaAtivaDoContato(admin: any, companyId: string, cardId: string | null, agora = new Date()): Promise<VisitaAtiva | null> {
+  if (!cardId) return null;
   const { data } = await admin
     .from("agendamento")
-    .select("id")
+    .select("id, inicio, fim, titulo, google_event_id")
     .eq("company_id", companyId)
     .eq("card_id", cardId)
-    .eq("inicio", inicio.toISOString())
-    .neq("status", "cancelado")
-    .limit(1);
-  return !!data?.length;
+    .eq("status", "agendado")
+    .gte("fim", agora.toISOString())
+    .order("inicio", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as VisitaAtiva | null) ?? null;
+}
+
+/** Tira da lista de ocupados o intervalo da própria visita do contato (local e Google trazem os dois). */
+export function semIntervalo(
+  ocupados: Array<{ inicio: string; fim: string }>,
+  inicio: string,
+  fim: string,
+): Array<{ inicio: string; fim: string }> {
+  const i = +new Date(inicio), f = +new Date(fim);
+  return ocupados.filter((o) => !(+new Date(o.inicio) === i && +new Date(o.fim) === f));
 }

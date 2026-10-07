@@ -271,6 +271,8 @@ export function buildSystemPrompt(
     googleConectado?: boolean;
     /** Intervalos já ocupados na agenda (texto pronto, um por linha). A IA não oferece esses. */
     ocupados?: string[];
+    /** Visita futura que este contato já tem ("ter., 13/10 às 10:00 (Visita Davi)"): a IA remarca, não duplica. */
+    visitaMarcada?: string;
     /** Fora do horário com modo "atender": `quando` é como dizer a próxima abertura ("amanhã às 08:00"). */
     foraHorario?: { quando: string };
     /** Memória do sistema sobre o contato (ficha), para não reenviar a conversa inteira. */
@@ -461,17 +463,24 @@ Marcador interno, não aparece para o cliente. Use só uma vez por assunto. Não
     const nowIso = new Date().toISOString();
     blocos.push(
       `AGENDAMENTO (o sistema registra a visita e avisa a equipe${opts?.googleConectado ? "; Google Agenda conectado" : ""}):
-Hoje é ${nowIso} (UTC, fuso America/Sao_Paulo). Quando o cliente CONFIRMAR um horário específico (dia + hora) para um serviço agendável, ` +
-        `na MESMA resposta, em uma nova linha, escreva exatamente:
+Hoje é ${nowIso} (UTC, fuso America/Sao_Paulo). Marcar é em DOIS passos, sempre:
+1) Quando o cliente sugerir ou escolher um dia e horário, NÃO marque ainda. Repita por extenso (dia da semana, dd/mm e hora) e pergunte se pode confirmar. Ex.: "Então fica terça, 13/10, às 10h. Posso confirmar?"
+2) Só quando ele responder SIM a essa pergunta ("sim", "confirmo", "pode marcar", "fechado"), na MESMA resposta, em uma nova linha, escreva exatamente:
 [AGENDAR: AAAA-MM-DDTHH:MM | AAAA-MM-DDTHH:MM | título curto]
 A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 min"} se o cliente não disser). ` +
         `Use o fuso -03:00 nos horários (ex.: 2026-06-20T15:00:00-03:00). Esse marcador é interno e NÃO aparece pro cliente. ` +
-        `Só emita o marcador quando o cliente confirmou claramente. Nunca invente horários que o cliente não disse. ` +
+        `NUNCA emita o marcador na mesma mensagem em que pergunta "posso confirmar?", nem quando o cliente só sugeriu um horário. Nunca invente horários que o cliente não disse. ` +
         `Só ofereça horários dentro das janelas disponíveis da empresa e nunca um horário da lista de ocupados abaixo. ` +
         `O sistema confere a agenda antes de marcar: se o horário não estiver livre, ele avisa o cliente. ` +
-        `Se o cliente já tem visita marcada (está na ficha) e disser que NÃO vai, que quer desmarcar ou remarcar, escreva em uma nova linha exatamente [CANCELAR_VISITA] e ofereça outro horário. ` +
-        `Se ele só confirmar que vai, agradeça e NÃO marque de novo.`,
+        `UMA visita por família: se o cliente quiser mudar o dia ou a hora de uma visita já marcada, confirme o novo horário do mesmo jeito (passos 1 e 2) — o sistema remarca a visita existente, não cria outra. ` +
+        `Se ele disser que NÃO vai ou quer desmarcar sem combinar outro horário, escreva em uma nova linha exatamente [CANCELAR_VISITA] e ofereça outro horário. ` +
+        `Depois que a visita foi marcada, se ele só agradecer ou disser "combinado", responda sem nenhum marcador.`,
     );
+    if (opts?.visitaMarcada) {
+      blocos.push(
+        `ESTE CLIENTE JÁ TEM VISITA MARCADA: ${opts.visitaMarcada}. Não marque outra. Se ele quiser mudar, confirme o novo horário e emita [AGENDAR] com ele (o sistema remarca). Se ele só confirmar que vai, agradeça — sem marcador.`,
+      );
+    }
     if (opts?.ocupados?.length) {
       blocos.push(
         `HORÁRIOS JÁ OCUPADOS NA AGENDA (não ofereça, não marque):\n${opts.ocupados.map((o) => `• ${o}`).join("\n")}`,

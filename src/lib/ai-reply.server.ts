@@ -105,9 +105,10 @@ export async function runAiReply(opts: {
   const googleConectado = !!googleIntegration?.conectado;
   const agendaLigada = !!cfg?.agendamento_ativo;
   let ocupados: Array<{ inicio: string; fim: string }> | null = null;
+  let visitaMarcada: string | undefined;
   if (agendaLigada) {
     try {
-      const { DIAS_OCUPADOS_NO_PROMPT, ocupadosLocais } = await import("@/lib/agenda.server");
+      const { DIAS_OCUPADOS_NO_PROMPT, ocupadosLocais, visitaAtivaDoContato, semIntervalo, descreverHorario } = await import("@/lib/agenda.server");
       const agora = new Date();
       const ate = new Date(agora.getTime() + DIAS_OCUPADOS_NO_PROMPT * 86_400_000).toISOString();
       // Locais sempre (a equipe marca visita à mão pela Agenda); Google por cima, quando há.
@@ -115,6 +116,13 @@ export async function runAiReply(opts: {
       if (googleConectado) {
         const { listarOcupados } = await import("@/lib/google.server");
         ocupados = [...ocupados, ...(await listarOcupados(supabaseAdmin, companyId, agora.toISOString(), ate))];
+      }
+      // A visita que o próprio contato já tem vai no prompt como "ele já tem visita", não como
+      // horário ocupado — senão a IA recusa para ele o horário que é dele.
+      const propria = await visitaAtivaDoContato(supabaseAdmin, companyId, (cardRow as any)?.id ?? null, agora);
+      if (propria) {
+        visitaMarcada = `${descreverHorario(new Date(propria.inicio))} (${propria.titulo})`;
+        ocupados = semIntervalo(ocupados, propria.inicio, propria.fim);
       }
     } catch (e: any) {
       console.warn("[agenda] não foi possível ler os ocupados:", e?.message);
@@ -131,6 +139,7 @@ export async function runAiReply(opts: {
     stages: stages.map((s) => ({ nome: s.nome, tipo: s.tipo })),
     googleConectado: !!googleIntegration?.conectado,
     ocupados: ocupados ? descreverOcupados(ocupados) : undefined,
+    visitaMarcada,
     ficha: { campos: (cardRow as any)?.ficha ?? null, resumo: (cardRow as any)?.ficha_resumo ?? null },
     foraHorario: opts.foraHorario ? { quando: opts.foraHorario.quando } : undefined,
   });
@@ -283,60 +292,90 @@ export async function runAiReply(opts: {
   }
 
   if (agendar && agendaLigada) {
-    const { validarAgendamento, conflita, jaAgendado, descreverHorario, ocupadosLocais } = await import("@/lib/agenda.server");
+    const { validarAgendamento, conflita, visitaAtivaDoContato, semIntervalo, descreverHorario, ocupadosLocais } = await import("@/lib/agenda.server");
     const v = validarAgendamento(agendar);
     const nome = (cardRow as any)?.nome || pushName || number;
+    const cardId: string | null = (cardRow as any)?.id ?? null;
     if (!v.ok) {
       agendaResultado = `recusado: ${v.motivo}`;
       finalParts.push(`Só um ajuste: não consegui registrar esse horário, ${v.motivo}. Pode me confirmar o dia e a hora de novo?`);
       await notaInterna(supabaseAdmin, companyId, userId, number, `⚠️ A IA tentou marcar uma visita, mas ${v.motivo}. Pediu outro horário ao cliente.`);
     } else {
       const quando = descreverHorario(v.inicio);
+      // O card do funil mostra a próxima ação e a data: quem olha o Kanban vê "Visita
+      // sex., 03/10 às 10:00" sem abrir a conversa.
+      const refletirNoCard = () =>
+        supabaseAdmin
+          .from("crm_cards")
+          .update({ proxima_acao: `${agendar.titulo} — ${quando}`, follow_up: v.inicio.toISOString() } as any)
+          .eq("company_id", companyId)
+          .eq("numero", number);
       try {
-        let ocupadosAgora = await ocupadosLocais(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
-        if (googleConectado) {
-          const { listarOcupados } = await import("@/lib/google.server");
-          ocupadosAgora = [...ocupadosAgora, ...(await listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString()))];
-        }
-        if (conflita(ocupadosAgora, v.inicio, v.fim)) {
-          agendaResultado = `conflito em ${quando}`;
-          finalParts.push(`Ih, ${quando} acabou de ficar ocupado na agenda. Tem outro horário que fica bom para você?`);
-          await notaInterna(supabaseAdmin, companyId, userId, number, `⚠️ ${nome} pediu visita ${quando}, mas o horário está ocupado. A IA pediu outro horário.`);
-        } else if (await jaAgendado(supabaseAdmin, companyId, (cardRow as any)?.id ?? null, v.inicio)) {
+        // UMA visita por família. A que já existe é remarcada, não duplicada — e não conta como
+        // "horário ocupado" contra o próprio cliente. Antes contava: a IA repetia o marcador no
+        // "obrigada", o código via a visita dela mesma, dizia "acabou de ficar ocupado", a pessoa
+        // escolhia outro horário e isso virava mais uma visita. Uma família chegou a quatro.
+        const atual = await visitaAtivaDoContato(supabaseAdmin, companyId, cardId);
+        if (atual && new Date(atual.inicio).getTime() === v.inicio.getTime()) {
           agendaResultado = "já existia, não duplicou";
         } else {
+          let ocupadosAgora = await ocupadosLocais(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString());
           if (googleConectado) {
-            const { createCalendarEventForCompany } = await import("@/lib/google.server");
-            await createCalendarEventForCompany(supabaseAdmin, companyId, {
-              titulo: agendar.titulo,
-              inicio: v.inicio.toISOString(),
-              fim: v.fim.toISOString(),
-              descricao: `Agendado via WhatsApp — ${nome}`,
-              cardId: (cardRow as any)?.id ?? null,
-            });
-          } else {
-            await supabaseAdmin.from("agendamento").insert({
-              company_id: companyId,
-              card_id: (cardRow as any)?.id ?? null,
-              titulo: agendar.titulo,
-              inicio: v.inicio.toISOString(),
-              fim: v.fim.toISOString(),
-              status: "agendado",
-            });
+            const { listarOcupados } = await import("@/lib/google.server");
+            ocupadosAgora = [...ocupadosAgora, ...(await listarOcupados(supabaseAdmin, companyId, v.inicio.toISOString(), v.fim.toISOString()))];
           }
-          agendaResultado = agendaResultado ? `${agendaResultado}; criado ${quando}` : `criado ${quando}`;
-          // O card do funil mostra a próxima ação e a data: quem olha o Kanban vê "Visita
-          // sex., 03/10 às 10:00" sem abrir a conversa.
-          await supabaseAdmin
-            .from("crm_cards")
-            .update({ proxima_acao: `${agendar.titulo} — ${quando}`, follow_up: v.inicio.toISOString() } as any)
-            .eq("company_id", companyId)
-            .eq("numero", number);
-          await notaInterna(
-            supabaseAdmin, companyId, userId, number,
-            `📅 Visita marcada pela IA — ${quando} (${agendar.titulo}). ` +
-              (googleConectado ? "Já está no Google Agenda." : "Google Agenda não conectado: confira a agenda e confirme com a família."),
-          );
+          if (atual) ocupadosAgora = semIntervalo(ocupadosAgora, atual.inicio, atual.fim);
+          if (conflita(ocupadosAgora, v.inicio, v.fim)) {
+            agendaResultado = `conflito em ${quando}`;
+            finalParts.push(`Ih, ${quando} acabou de ficar ocupado na agenda. Tem outro horário que fica bom para você?`);
+            await notaInterna(supabaseAdmin, companyId, userId, number, `⚠️ ${nome} pediu visita ${quando}, mas o horário está ocupado. A IA pediu outro horário.`);
+          } else if (atual) {
+            const antes = descreverHorario(new Date(atual.inicio));
+            if (atual.google_event_id && googleConectado) {
+              const { atualizarEventoGoogle } = await import("@/lib/google.server");
+              await atualizarEventoGoogle(supabaseAdmin, companyId, atual.google_event_id, {
+                titulo: agendar.titulo, inicio: v.inicio.toISOString(), fim: v.fim.toISOString(),
+              });
+            }
+            await supabaseAdmin
+              .from("agendamento")
+              .update({ titulo: agendar.titulo, inicio: v.inicio.toISOString(), fim: v.fim.toISOString() })
+              .eq("id", atual.id);
+            agendaResultado = `remarcado de ${antes} para ${quando}`;
+            await refletirNoCard();
+            await notaInterna(
+              supabaseAdmin, companyId, userId, number,
+              `🔁 Visita remarcada pela IA — era ${antes}, agora ${quando} (${agendar.titulo}).` +
+                (atual.google_event_id ? " Google Agenda atualizado." : ""),
+            );
+          } else {
+            if (googleConectado) {
+              const { createCalendarEventForCompany } = await import("@/lib/google.server");
+              await createCalendarEventForCompany(supabaseAdmin, companyId, {
+                titulo: agendar.titulo,
+                inicio: v.inicio.toISOString(),
+                fim: v.fim.toISOString(),
+                descricao: `Agendado via WhatsApp — ${nome}`,
+                cardId,
+              });
+            } else {
+              await supabaseAdmin.from("agendamento").insert({
+                company_id: companyId,
+                card_id: cardId,
+                titulo: agendar.titulo,
+                inicio: v.inicio.toISOString(),
+                fim: v.fim.toISOString(),
+                status: "agendado",
+              });
+            }
+            agendaResultado = agendaResultado ? `${agendaResultado}; criado ${quando}` : `criado ${quando}`;
+            await refletirNoCard();
+            await notaInterna(
+              supabaseAdmin, companyId, userId, number,
+              `📅 Visita marcada pela IA — ${quando} (${agendar.titulo}). ` +
+                (googleConectado ? "Já está no Google Agenda." : "Google Agenda não conectado: confira a agenda e confirme com a família."),
+            );
+          }
         }
       } catch (e: any) {
         agendaResultado = `erro: ${e?.message}`;
