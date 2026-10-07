@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { MSG_AUTOMATICA, comMarcadorAutomatica } from "@/lib/mensagem-automatica.shared";
 
 export const Route = createFileRoute("/api/public/whatsapp-webhook")({
   server: {
@@ -200,6 +201,15 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
                 companyId, base64: corpoBruto, mimetype: data?.mimetype ?? null, numero: number,
               });
               if (caminho) textoSaida = `${textoSaida} ${marcadorMidia(caminho)}`;
+            }
+
+            // Saudação/ausência automática do WhatsApp Business: o celular respondeu sozinho,
+            // no mesmo instante da mensagem do cliente, com um texto que já foi mandado a outros
+            // contatos. Não é a equipe atendendo — fica marcada para não calar a IA nem contar
+            // como atividade humana. Se a mensagem do cliente ainda não foi gravada (chega
+            // junto ou depois), quem marca é o lado dela, em marcarMensagensAutomaticas.
+            if (text && !audioMsg && !imageMsg && (await ehSaudacaoAutomatica(supabaseAdmin, companyId, number, text))) {
+              textoSaida = comMarcadorAutomatica(textoSaida);
             }
 
             const { data: fromMeRow } = await (supabaseAdmin as any)
@@ -521,6 +531,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
               .eq("numero", number)
               .eq("direcao", "saida")
               .eq("autor", "humano")
+              .not("texto", "like", `${MSG_AUTOMATICA}%`)
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
@@ -624,6 +635,9 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
 
           // Alguém da equipe já respondeu (pelo celular ou pelo painel) depois desta mensagem:
           // a IA não responde por cima. Antes só se olhava se havia mensagem nova DO CLIENTE.
+          // A saudação automática do WhatsApp Business não é "alguém da equipe": marca antes
+          // de olhar, porque ela costuma ser gravada antes mesmo da mensagem do cliente.
+          await marcarMensagensAutomaticas(supabaseAdmin, companyId, number, myCreatedAt);
           const { data: respondida } = await supabaseAdmin
             .from("mensagens")
             .select("id")
@@ -631,6 +645,7 @@ export const Route = createFileRoute("/api/public/whatsapp-webhook")({
             .eq("numero", number)
             .eq("direcao", "saida")
             .in("autor", ["humano", "ia"])
+            .not("texto", "like", `${MSG_AUTOMATICA}%`)
             .gt("created_at", myCreatedAt)
             .limit(1);
           if (respondida && respondida.length > 0) {
@@ -757,6 +772,66 @@ const MAX_IDADE_RESPOSTA_MIN = 30;
 // a IA de contatos que nunca foram atendidos, que depois escreviam e não eram respondidos.
 // Histórico só é guardado: nada de fila, nada de pausa.
 const MAX_IDADE_FILA_HUMANA_MIN = 12 * 60;
+
+// Saudação e mensagem de ausência do WhatsApp Business chegam como "fromMe", iguais a uma
+// resposta digitada no celular. Dois sinais as separam de gente: saem no mesmo instante da
+// mensagem do cliente (no log da VM: 4 s e 12 s depois — o celular às vezes demora a acordar)
+// e o texto é sempre o mesmo, já enviado a outros contatos da empresa. Os dois juntos; um só
+// não basta — a equipe também usa resposta rápida com texto repetido, e aí É atendimento humano.
+const JANELA_AUTOMATICA_MS = 30_000;
+
+async function textoRepetidoParaOutros(admin: any, companyId: string, numero: string, texto: string): Promise<boolean> {
+  const { data } = await admin
+    .from("mensagens")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("direcao", "saida")
+    .eq("autor", "humano")
+    .neq("numero", numero)
+    .in("texto", [texto, comMarcadorAutomatica(texto)])
+    .limit(1);
+  return !!data?.length;
+}
+
+async function ehSaudacaoAutomatica(admin: any, companyId: string, numero: string, texto: string): Promise<boolean> {
+  const { data: ultimaEntrada } = await admin
+    .from("mensagens")
+    .select("created_at")
+    .eq("company_id", companyId)
+    .eq("numero", numero)
+    .eq("direcao", "entrada")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!ultimaEntrada?.created_at) return false;
+  if (Date.now() - new Date(ultimaEntrada.created_at).getTime() > JANELA_AUTOMATICA_MS) return false;
+  return textoRepetidoParaOutros(admin, companyId, numero, texto);
+}
+
+// Lado da mensagem do cliente: a saudação costuma ser gravada ANTES de a dela existir no
+// banco (chega 100 ms depois, mas o webhook dela é mais rápido; ou a do cliente esperou ser
+// decifrada no servidor). Antes de decidir se "alguém já respondeu", marca o que saiu do
+// celular em volta desse instante e já foi dito a outros contatos.
+async function marcarMensagensAutomaticas(admin: any, companyId: string, numero: string, entradaIso: string) {
+  const entradaMs = new Date(entradaIso).getTime();
+  const { data: saidas } = await admin
+    .from("mensagens")
+    .select("id, texto, created_at")
+    .eq("company_id", companyId)
+    .eq("numero", numero)
+    .eq("direcao", "saida")
+    .eq("autor", "humano")
+    .gte("created_at", new Date(entradaMs - 90_000).toISOString())
+    .lte("created_at", new Date(entradaMs + JANELA_AUTOMATICA_MS).toISOString())
+    .not("texto", "like", `${MSG_AUTOMATICA}%`)
+    .limit(5);
+  for (const s of (saidas ?? []) as Array<{ id: string; texto: string; created_at: string }>) {
+    if (!s.texto || s.texto.startsWith("🎤") || s.texto.startsWith("📷")) continue;
+    if (await textoRepetidoParaOutros(admin, companyId, numero, s.texto)) {
+      await admin.from("mensagens").update({ texto: comMarcadorAutomatica(s.texto) }).eq("id", s.id);
+    }
+  }
+}
 
 const OPT_OUT_WORDS =["parar", "pare", "cancelar", "sair", "remover", "descadastrar", "stop", "unsubscribe"];
 

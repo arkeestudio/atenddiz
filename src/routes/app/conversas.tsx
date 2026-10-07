@@ -27,6 +27,7 @@ import { marcarAtendido } from "@/lib/ficha.functions";
 import { reiniciarConversa, excluirConversa } from "@/lib/conversa.functions";
 import { assinarMidiasConversa } from "@/lib/midia.functions";
 import { extrairCaminhoMidia, textoSemMarcadorMidia } from "@/lib/midia-conversa.shared";
+import { MSG_AUTOMATICA, ehMensagemAutomatica, semMarcadorAutomatica } from "@/lib/mensagem-automatica.shared";
 import { FichaAtendimento } from "@/components/ficha/ficha-atendimento";
 import { markConversationSeen, sendTypingPresence } from "@/lib/whatsapp.functions";
 import { LeadDrawer, FollowupTab, type LeadCard, type Stage, type Member } from "@/components/crm/lead-drawer";
@@ -928,7 +929,7 @@ function ConversasPage() {
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <p className={`text-[12px] truncate flex-1 ${u > 0 ? "text-foreground" : "text-muted-foreground"}`}>
-                          {textoSemMarcadorMidia(c.last.texto).replace(/📝 Transcrição:\s*/g, "").replace(/^🎤 \[(Áudio|Nota de Voz)\]\s*/, "🎤 ").replace(NOTA_INTERNA, "🔒")}
+                          {textoSemMarcadorMidia(c.last.texto).replace(/📝 Transcrição:\s*/g, "").replace(/^🎤 \[(Áudio|Nota de Voz)\]\s*/, "🎤 ").replace(NOTA_INTERNA, "🔒").replace(MSG_AUTOMATICA, "⚙️")}
                         </p>
                         {aguardandoHumano ? (
                           <span
@@ -1840,6 +1841,9 @@ function mesmaRajada(a: Msg | undefined, b: Msg | undefined) {
   if (!a || !b) return false;
   if (a.texto.startsWith(NOTA_INTERNA) || b.texto.startsWith(NOTA_INTERNA)) return false;
   if (a.direcao !== b.direcao || a.autor !== b.autor) return false;
+  // Saudação automática do WhatsApp e resposta do atendente têm o mesmo autor no banco, mas
+  // são coisas diferentes na tela: cada uma com o seu rótulo.
+  if (ehMensagemAutomatica(a.texto) !== ehMensagemAutomatica(b.texto)) return false;
   return new Date(b.created_at).getTime() - new Date(a.created_at).getTime() < 5 * 60_000;
 }
 
@@ -1886,8 +1890,9 @@ function Bubble({
   const isInternal = m.texto.startsWith(NOTA_INTERNA);
   const isOut = m.direcao === "saida";
   const ia = m.autor === "ia";
+  const automatica = ehMensagemAutomatica(m.texto);
   // O caminho da imagem não é para o olho humano: mostra o texto sem o marcador.
-  const semMarcador = textoSemMarcadorMidia(m.texto);
+  const semMarcador = textoSemMarcadorMidia(semMarcadorAutomatica(m.texto));
   const displayText = isInternal ? semMarcador.replace(NOTA_INTERNA, "").trim() : semMarcador;
   const isAudio = m.texto.includes("[Áudio]") || m.texto.includes("[Audio]") || m.texto.startsWith("🎤");
   // Transcrição em andamento esconde o botão; se ficou presa (>2 min), o botão volta para tentar de novo.
@@ -1934,7 +1939,7 @@ function Bubble({
       >
         {isOut && primeira && (
           <span className="block text-[10px] font-semibold text-[color:var(--brand-text)] mb-0.5">
-            {ia ? "✨ Lia · IA" : "Atendente"}
+            {ia ? "✨ Lia · IA" : automatica ? "⚙️ Automática do WhatsApp" : "Atendente"}
           </span>
         )}
 

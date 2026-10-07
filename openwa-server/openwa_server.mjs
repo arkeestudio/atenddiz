@@ -199,6 +199,22 @@ async function getOrCreateSession(name, webhookUrl) {
         return;
       }
 
+      // Mensagem que chega cifrada: o WhatsApp Web entrega primeiro um esqueleto sem texto
+      // (type 'ciphertext', o "Aguardando mensagem..." da tela) e preenche depois — sem
+      // disparar outro evento. Era assim que a primeira mensagem de quem vinha do anúncio
+      // sumia: o webhook recebia "sem texto" e descartava; a saudação automática do celular,
+      // logo atrás, era gravada. Espera decifrar antes de encaminhar.
+      if (!message.fromMe && mensagemCifrada(message)) {
+        console.log(`[OpenWA Server] Mensagem ${message.id} de ${from} chegou sem texto (type ${message.type}); aguardando decifrar...`);
+        const decifrada = await aguardarDecifrar(s, message, 45_000);
+        if (decifrada) {
+          message = decifrada;
+          from = message.from || from;
+        } else {
+          console.warn(`[OpenWA Server] Mensagem ${message.id} de ${from} continua sem texto após a espera; encaminhando assim mesmo.`);
+        }
+      }
+
       // Converte @lid para o telefone real. CADA campo é resolvido separadamente:
       // `from` é quem enviou e `chatId`/`to` são a conversa. Numa mensagem enviada por nós
       // (fromMe) o `from` somos nós, então reaproveitar esse resultado no `chatId` arquiva
@@ -241,7 +257,8 @@ async function getOrCreateSession(name, webhookUrl) {
         }
       }
 
-      console.log(`[OpenWA Server] Message received from ${message.from} (fromMe: ${message.fromMe}) for ${name}`);
+      const tamanhoTexto = typeof message.body === 'string' ? message.body.length : 0;
+      console.log(`[OpenWA Server] Message received from ${message.from} (fromMe: ${message.fromMe}, type: ${message.type}, texto: ${tamanhoTexto} chars) for ${name}`);
       if (s.webhookUrl) {
         try {
           const payload = {
@@ -276,6 +293,68 @@ async function getOrCreateSession(name, webhookUrl) {
   });
 
   return s;
+}
+
+// Sem texto nem mídia: ou é o esqueleto cifrado, ou um 'chat' vazio — que o webhook
+// descartaria de qualquer jeito, então esperar não custa nada.
+function mensagemCifrada(m) {
+  if (m.type === 'ciphertext') return true;
+  const temTexto = (typeof m.body === 'string' && m.body.trim()) || (typeof m.caption === 'string' && m.caption.trim());
+  return !temTexto && !m.mimetype && (m.type === 'chat' || !m.type);
+}
+
+// Relê a mensagem na página até ela vir decifrada. Prefere os módulos (window.Store some
+// quando o WhatsApp Web atualiza) e, quando ela está pronta, pede ao open-wa o objeto
+// completo — o mesmo formato que o webhook já conhece. Devolve null se o tempo acabar.
+async function aguardarDecifrar(s, message, limiteMs) {
+  const page = s.client?._page || s.client?.page;
+  const id = typeof message.id === 'string' ? message.id : message.id?._serialized;
+  if (!page || !id) return null;
+  const inicio = Date.now();
+  const pronta = (m) => m && m.type !== 'ciphertext' && (m.body || m.caption || m.mimetype);
+  const pelaBiblioteca = async () => {
+    try {
+      const completa = await s.client.getMessageById(id);
+      return pronta(completa) ? completa : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  let tentativas = 0;
+  while (Date.now() - inicio < limiteMs) {
+    await new Promise((r) => setTimeout(r, tentativas === 0 ? 1500 : 2500));
+    tentativas++;
+    let estado;
+    try {
+      await garantirHelpers(page);
+      estado = await page.evaluate((msgId) => {
+        const h = window.__atenddiz;
+        let col = window.Store && window.Store.Msg && typeof window.Store.Msg.get === 'function' ? window.Store.Msg : null;
+        if (!col) {
+          const r = h.acharModulo(['WAWebMsgCollection', 'WAWebMsgStore'],
+            (m) => (m.MsgCollection && typeof m.MsgCollection.get === 'function') || (m.Msg && typeof m.Msg.get === 'function'));
+          col = r.mod ? (r.mod.MsgCollection || r.mod.Msg) : null;
+        }
+        if (!col) return { erro: 'sem-colecao' };
+        const msg = col.get(msgId);
+        if (!msg) return { erro: 'nao-achou' };
+        return { type: msg.type, body: msg.body, caption: msg.caption, mimetype: msg.mimetype };
+      }, id);
+    } catch (e) {
+      estado = { erro: e.message };
+    }
+    if (estado && !estado.erro && pronta(estado)) {
+      console.log(`[OpenWA Server] Mensagem ${id} decifrada após ${Math.round((Date.now() - inicio) / 1000)}s (type ${estado.type})`);
+      const completa = await pelaBiblioteca();
+      if (completa) return completa;
+      return { ...message, type: estado.type, body: estado.body ?? message.body, caption: estado.caption ?? message.caption, mimetype: estado.mimetype ?? message.mimetype };
+    }
+    if (estado && estado.erro === 'sem-colecao') {
+      const completa = await pelaBiblioteca();
+      if (completa) return completa;
+    }
+  }
+  return null;
 }
 
 function parseDataUrl(dataUrl) {

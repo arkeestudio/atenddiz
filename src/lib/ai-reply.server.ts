@@ -74,6 +74,10 @@ export async function runAiReply(opts: {
     .order("created_at", { ascending: false })
     .limit(12);
   const historico = ((histDesc ?? []) as any[]).slice().reverse();
+  // A saudação automática do WhatsApp Business entra como fala nossa, sem o marcador: a IA
+  // vê que o cliente já foi cumprimentado e não cumprimenta de novo.
+  const { semMarcadorAutomatica } = await import("@/lib/mensagem-automatica.shared");
+  for (const h of historico) if (typeof h.texto === "string") h.texto = semMarcadorAutomatica(h.texto);
 
   let { data: cardRow } = await supabaseAdmin
     .from("crm_cards")
