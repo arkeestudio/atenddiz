@@ -587,6 +587,68 @@ function AgentePage() {
                   </div>
                 </div>
               )}
+
+              {/* Feriados valem para a agenda mesmo com o controle de horário desligado: a IA
+                  não marca visita e, com o controle ligado, o dia conta como fechado. */}
+              <div className="space-y-2 pt-3 border-t border-[var(--border)]">
+                <div>
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Feriados e recessos</Label>
+                  <p className="text-[11.5px] text-muted-foreground">
+                    Nesses dias a IA não marca visita e avisa o cliente. Com o controle de horário ligado, o dia inteiro conta como fechado.
+                  </p>
+                </div>
+                <label className="flex items-center justify-between gap-3 text-xs bg-[var(--panel-2)] p-2.5 rounded-lg border border-[var(--border)] cursor-pointer">
+                  <span>
+                    <span className="font-medium">Feriados nacionais automáticos</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      Ano Novo, Carnaval, Sexta-feira Santa, Tiradentes, 1º de Maio, Corpus Christi, 7 de Setembro, 12 de Outubro, Finados, 15 de Novembro, Consciência Negra e Natal.
+                    </span>
+                  </span>
+                  <Switch
+                    checked={horarios.feriados_nacionais !== false}
+                    onCheckedChange={(v) => setHorarios((prev) => ({ ...prev, feriados_nacionais: v }))}
+                  />
+                </label>
+                {(horarios.feriados ?? []).map((f, i) => {
+                  const mudar = (patch: Partial<typeof f>) =>
+                    setHorarios((prev) => ({ ...prev, feriados: (prev.feriados ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
+                  return (
+                    <div key={i} className="flex flex-wrap items-center gap-2 text-xs bg-[var(--panel-2)] p-2.5 rounded-lg border border-[var(--border)]">
+                      <Input type="date" value={f.de} onChange={(e) => mudar({ de: e.target.value })} className="h-7 w-36 text-xs py-0 px-1" />
+                      <span className="text-muted-foreground">até</span>
+                      <Input type="date" value={f.ate || f.de} min={f.de} onChange={(e) => mudar({ ate: e.target.value })} className="h-7 w-36 text-xs py-0 px-1" />
+                      <Input
+                        value={f.motivo ?? ""}
+                        onChange={(e) => mudar({ motivo: e.target.value })}
+                        placeholder="Motivo (ex.: recesso, feriado municipal, emenda)"
+                        className="h-7 flex-1 min-w-44 text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-muted-foreground hover:text-red-600"
+                        onClick={() => setHorarios((prev) => ({ ...prev, feriados: (prev.feriados ?? []).filter((_, j) => j !== i) }))}
+                        title="Remover"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+                    setHorarios((prev) => ({ ...prev, feriados: [...(prev.feriados ?? []), { de: hoje, ate: hoje, motivo: "" }] }));
+                  }}
+                >
+                  <Plus className="size-3.5 mr-1" /> Adicionar data fechada
+                </Button>
+              </div>
             </div>
           </Section>
 

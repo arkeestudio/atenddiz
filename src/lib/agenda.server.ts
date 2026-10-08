@@ -5,6 +5,8 @@
 // visita, numa data que já passou ou duas vezes a mesma. Quem decide se um horário vale
 // é o código, lendo a agenda — a IA só propõe.
 import type { AgendarBrief } from "./ai-prompt";
+import type { BusinessHours } from "./business-hours";
+import { diaDe, feriadoEm, rotuloCurto } from "./feriados";
 
 const TZ = "America/Sao_Paulo";
 // Antes disso é agenda cheia demais para prometer; depois disso é erro de digitação da IA.
@@ -27,7 +29,13 @@ function diaExiste(iso: string): boolean {
   return dt.getUTCFullYear() === a && dt.getUTCMonth() === mes - 1 && dt.getUTCDate() === d;
 }
 
-export function validarAgendamento(a: AgendarBrief, agora = new Date()): Validado {
+export function validarAgendamento(
+  a: AgendarBrief,
+  agora = new Date(),
+  // Com os horários da empresa, feriado nacional e data cadastrada (recesso) recusam a visita.
+  // A equipe, marcando à mão pela Agenda, não passa isso: pode abrir num feriado se quiser.
+  opts?: { horarios?: Pick<BusinessHours, "feriados" | "feriados_nacionais"> | null },
+): Validado {
   if (!diaExiste(a.inicio)) return { ok: false, motivo: "essa data não existe no calendário" };
   const inicio = new Date(a.inicio);
   const fim = new Date(a.fim);
@@ -38,6 +46,18 @@ export function validarAgendamento(a: AgendarBrief, agora = new Date()): Validad
   if (inicio.getTime() < agora.getTime() - 5 * 60_000) return { ok: false, motivo: "esse horário já passou" };
   if (inicio.getTime() > agora.getTime() + MAX_DIAS_FRENTE * 86_400_000) {
     return { ok: false, motivo: `só marcamos até ${MAX_DIAS_FRENTE} dias à frente` };
+  }
+  if (opts?.horarios !== undefined) {
+    const dia = diaDe(inicio);
+    const feriado = feriadoEm(dia, opts.horarios);
+    if (feriado) {
+      return {
+        ok: false,
+        motivo: feriado.nacional
+          ? `${rotuloCurto(dia)} é feriado (${feriado.nome})`
+          : `${rotuloCurto(dia)} não tem atendimento (${feriado.nome})`,
+      };
+    }
   }
   return { ok: true, inicio, fim };
 }

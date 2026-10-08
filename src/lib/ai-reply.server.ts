@@ -297,7 +297,7 @@ export async function runAiReply(opts: {
 
   if (agendar && agendaLigada) {
     const { validarAgendamento, conflita, visitaAtivaDoContato, semIntervalo, descreverHorario, ocupadosLocais } = await import("@/lib/agenda.server");
-    const v = validarAgendamento(agendar);
+    const v = validarAgendamento(agendar, new Date(), { horarios: (cfg as any)?.horarios_atendimento ?? null });
     const nome = (cardRow as any)?.nome || pushName || number;
     const cardId: string | null = (cardRow as any)?.id ?? null;
     if (!v.ok) {

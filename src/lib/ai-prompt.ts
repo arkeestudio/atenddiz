@@ -12,7 +12,14 @@ export interface StageBrief {
   tipo?: "normal" | "ganho" | "perda";
 }
 
+import type { BusinessHours } from "./business-hours";
+import { diaDe, feriadoEm, feriadosEntre, rotuloCurto } from "./feriados";
+
 export interface AgentConfig {
+  // Horário de atendimento, feriados e recessos (agent_config.horarios_atendimento). Vem do
+  // banco como Json; `calendarioDe` confere a forma antes de usar.
+  horarios_atendimento?: unknown;
+
   // IA provider
   ai_provider?: string;
   ai_model?: string;
@@ -228,24 +235,38 @@ function partesData(d: Date) {
  * repete a expressão do cliente e ninguém — nem a equipe — sabe que dia foi combinado.
  * Entregamos a conta já feita: a data de hoje e a dos próximos dias, no fuso de Brasília.
  */
-export function blocoCalendario(): string {
+type Calendario = Pick<BusinessHours, "feriados" | "feriados_nacionais"> | null;
+
+function calendarioDe(c: Partial<AgentConfig>): Calendario {
+  const h = c.horarios_atendimento;
+  return h && typeof h === "object" ? (h as Calendario) : null;
+}
+
+export function blocoCalendario(horarios?: Calendario): string {
   const agora = new Date();
   const hoje = partesData(agora);
+  // Feriado e recesso vão marcados na própria lista: a IA lia "segunda-feira" e marcava
+  // visita no 12 de outubro.
+  const fechado = (d: Date) => {
+    const f = feriadoEm(diaDe(d), horarios);
+    return f ? ` — ${f.nacional ? "FERIADO" : "SEM ATENDIMENTO"}: ${f.nome}` : "";
+  };
   const proximos = [1, 2, 3, 4, 5, 6, 7].map((n) => {
     const d = new Date(agora.getTime() + n * 86_400_000);
     const { data, diaSemana } = partesData(d);
     const apelido = n === 1 ? "amanhã" : n === 2 ? "depois de amanhã" : "";
-    return `• ${data} (${diaSemana}${apelido ? `, ${apelido}` : ""})`;
+    return `• ${data} (${diaSemana}${apelido ? `, ${apelido}` : ""})${fechado(d)}`;
   });
   const hora = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(agora);
 
-  return `DATA DE HOJE: ${hoje.data} (${hoje.diaSemana}), ${hora} — horário de Brasília.
+  return `DATA DE HOJE: ${hoje.data} (${hoje.diaSemana}), ${hora} — horário de Brasília.${fechado(agora)}
 Próximos dias:
 ${proximos.join("\n")}
 
 REGRA DE DATAS (OBRIGATÓRIO): nunca repita "amanhã", "depois de amanhã", "semana que vem" ou "quinta" sem dizer a data.
 Ao combinar qualquer dia, converta usando a lista acima e confirme com dia e mês: "então fica quinta, 24/09, às 10h?".
-Se o cliente não disser o dia, peça uma data específica. Não invente dia da semana nem data fora dessa lista.`;
+Se o cliente não disser o dia, peça uma data específica. Não invente dia da semana nem data fora dessa lista.
+Dia marcado como FERIADO ou SEM ATENDIMENTO: a empresa está fechada. Não marque visita nem prometa retorno da equipe nesse dia; avise e proponha o próximo dia útil.`;
 }
 
 function conhecimentoItensTexto(raw: unknown): string {
@@ -441,7 +462,7 @@ Se uma frase só já resolve, use UMA parte e pronto (sem o marcador). Nunca mai
     blocos.push(`FORMATO DA RESPOSTA: uma mensagem só, curta e natural.`);
   }
 
-  blocos.push(blocoCalendario());
+  blocos.push(blocoCalendario(calendarioDe(c)));
 
   // Noite e fim de semana com a IA ligada: ela atende, coleta a ficha e, no que depende de
   // gente, combina o retorno — em vez de "estamos fechados" e silêncio até o dia seguinte.
@@ -479,6 +500,16 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
     if (opts?.visitaMarcada) {
       blocos.push(
         `ESTE CLIENTE JÁ TEM VISITA MARCADA: ${opts.visitaMarcada}. Não marque outra. Se ele quiser mudar, confirme o novo horário e emita [AGENDAR] com ele (o sistema remarca). Se ele só confirmar que vai, agradeça — sem marcador.`,
+      );
+    }
+    // Feriados nacionais e datas da empresa nos 90 dias em que a IA pode marcar: ela lê a
+    // lista em vez de "lembrar" que 12 de outubro é feriado. O sistema recusa de qualquer
+    // jeito; isto é para ela avisar antes, não depois.
+    const semVisita = feriadosEntre(diaDe(new Date()), diaDe(new Date(Date.now() + 90 * 86_400_000)), calendarioDe(c));
+    if (semVisita.length) {
+      blocos.push(
+        `DIAS SEM VISITA nos próximos 90 dias (feriado ou recesso — não ofereça nem marque; se o cliente pedir, avise e proponha outro dia):\n` +
+          semVisita.map((f) => `• ${rotuloCurto(f.data)} — ${f.nome}`).join("\n"),
       );
     }
     if (opts?.ocupados?.length) {

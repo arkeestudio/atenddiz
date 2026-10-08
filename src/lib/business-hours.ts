@@ -2,7 +2,11 @@
 // Shape stored at agent_config.horarios_atendimento:
 // { enabled: boolean, timezone: string, dias: { "0": null | {abre:"HH:MM",fecha:"HH:MM"}, ... "6": ... } }
 
+import { diaDe, feriadoEm } from "./feriados";
+
 export type DaySchedule = { abre: string; fecha: string } | null;
+// Um dia (ou período) fechado além da grade semanal: recesso, feriado municipal, emenda.
+export type FeriadoEmpresa = { de: string; ate?: string; motivo?: string };
 export type BusinessHours = {
   enabled: boolean;
   timezone: string;
@@ -12,6 +16,11 @@ export type BusinessHours = {
   // - "atender": a IA continua atendendo e coletando a ficha, não marca nada para "agora"
   //   e, quando o assunto depende da equipe, combina o retorno para a próxima abertura.
   modo_fora?: "bloquear" | "atender";
+  // Datas fechadas cadastradas pela empresa ("AAAA-MM-DD"). Valem para a agenda mesmo com o
+  // controle de horário desligado.
+  feriados?: FeriadoEmpresa[];
+  // Feriados nacionais entram sozinhos (padrão). false desliga.
+  feriados_nacionais?: boolean;
 };
 
 // Deslocamento do fuso naquele instante, ex.: "-03:00". Sem biblioteca de datas.
@@ -30,8 +39,10 @@ export function proximaAbertura(h: BusinessHours | null | undefined, now: Date =
   if (!h?.enabled) return null;
   const tz = h.timezone || "America/Sao_Paulo";
   const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-  for (let i = 0; i < 8; i++) {
+  // 20 dias: cobre recesso de fim de ano com fim de semana e feriado emendados.
+  for (let i = 0; i < 20; i++) {
     const dia = new Date(now.getTime() + i * 86_400_000);
+    if (feriadoEm(ymd.format(dia), h)) continue;
     const sched = h.dias?.[String(getZonedParts(dia, tz).dow)];
     if (!sched || hhmmToMinutes(sched.abre) == null) continue;
     const abertura = new Date(`${ymd.format(dia)}T${sched.abre.padStart(5, "0")}:00${offsetDe(tz, dia)}`);
@@ -97,6 +108,8 @@ function hhmmToMinutes(s: string): number | null {
 export function isWithinBusinessHours(h: BusinessHours | null | undefined, now: Date = new Date()): boolean {
   if (!h || !h.enabled) return true; // disabled = sempre dentro
   const tz = h.timezone || "America/Sao_Paulo";
+  // Feriado e recesso contam como fechado o dia inteiro.
+  if (feriadoEm(diaDe(now, tz), h)) return false;
   let parts;
   try {
     parts = getZonedParts(now, tz);

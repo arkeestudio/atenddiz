@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "sonner";
 import { CalendarDays, CheckCircle2, XCircle, MessageSquareText, RefreshCw, RotateCcw, Plus, Loader2, Pencil, Trash2 } from "lucide-react";
 import { criarAgendamento, editarAgendamento, excluirAgendamento } from "@/lib/agenda.functions";
+import { getBusinessHours } from "@/lib/templates.functions";
+import { feriadoEm } from "@/lib/feriados";
+import type { BusinessHours } from "@/lib/business-hours";
 
 // Visitas marcadas pela IA (ou pela equipe) num lugar só. A IA marca, avisa na conversa e
 // no painel — mas quem precisa olhar "o que tem amanhã?" não pode depender de ter visto o
@@ -67,6 +70,13 @@ function AgendaPage() {
   const [novaAberta, setNovaAberta] = useState(false);
   const [editando, setEditando] = useState<Visita | null>(null);
   const excluir = useServerFn(excluirAgendamento);
+  // Feriados e recessos da empresa: marcam o dia na lista e avisam na hora de marcar à mão.
+  const lerHorarios = useServerFn(getBusinessHours);
+  const [horarios, setHorarios] = useState<BusinessHours | null>(null);
+  useEffect(() => {
+    lerHorarios().then((r: any) => setHorarios((r?.horarios as BusinessHours | null) ?? null)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function excluirVisita(v: Visita) {
     const ok = window.confirm(
@@ -187,6 +197,7 @@ function AgendaPage() {
           onClose={() => { setNovaAberta(false); setEditando(null); }}
           companyId={companyId}
           onCriada={() => { setNovaAberta(false); setEditando(null); void carregar(); }}
+          horarios={horarios}
         />
       )}
 
@@ -209,10 +220,16 @@ function AgendaPage() {
         {porDia.map(([dia, lista]) => {
           const rotulo = rotuloDia(dia);
           const destaque = rotulo === "Hoje";
+          const feriado = feriadoEm(dia, horarios);
           return (
             <section key={dia} className="px-4 py-3">
               <div className="flex items-baseline gap-2 mb-2">
                 <h2 className={`text-[13px] font-bold uppercase tracking-wider ${destaque ? "text-[color:var(--brand-text)]" : "text-muted-foreground"}`}>{rotulo}</h2>
+                {feriado && (
+                  <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    · {feriado.nacional ? "Feriado" : "Sem atendimento"}: {feriado.nome}
+                  </span>
+                )}
                 {(rotulo === "Hoje" || rotulo === "Amanhã") && (
                   <span className="text-[11px] text-muted-foreground">
                     {new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, weekday: "long", day: "2-digit", month: "2-digit" }).format(new Date(lista[0].inicio))}
@@ -287,8 +304,9 @@ function AgendaPage() {
 // bloqueio para ela; com contato ligado, a data vai para a ficha e o Kanban.
 // Mesmo diálogo para criar e para editar (`inicial` preenchido). Na edição o contato não
 // muda — trocar a família é excluir e criar outra, de propósito.
-function NovaVisitaDialog({ aberta, inicial, onClose, companyId, onCriada }: {
+function NovaVisitaDialog({ aberta, inicial, onClose, companyId, onCriada, horarios }: {
   aberta: boolean; inicial?: Visita | null; onClose: () => void; companyId: string; onCriada: () => void;
+  horarios?: BusinessHours | null;
 }) {
   const criar = useServerFn(criarAgendamento);
   const editar = useServerFn(editarAgendamento);
@@ -384,6 +402,15 @@ function NovaVisitaDialog({ aberta, inicial, onClose, companyId, onCriada }: {
             <div className="space-y-1">
               <Label className="text-[11px]">Dia</Label>
               <Input type="date" value={data} min={hoje} onChange={(e) => setData(e.target.value)} className="h-9" />
+              {(() => {
+                // A equipe pode marcar num feriado (plantão, evento), mas não sem saber.
+                const f = feriadoEm(data, horarios);
+                return f ? (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    ⚠️ {f.nacional ? "Feriado" : "Sem atendimento"}: {f.nome}. A IA não marca neste dia.
+                  </p>
+                ) : null;
+              })()}
             </div>
             <div className="space-y-1">
               <Label className="text-[11px]">Hora</Label>

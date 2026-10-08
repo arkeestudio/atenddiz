@@ -14,6 +14,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSystemPrompt, parseAiOutput, type AgentConfig, type StageBrief } from "../src/lib/ai-prompt";
 import { SEGMENTO_PADRAO, normalizarOpcao } from "../src/lib/ficha-campos";
+import { diaDe, feriadosNacionais } from "../src/lib/feriados";
 import { lovableAiChat, type ChatMsg } from "../src/lib/lovable-ai.server";
 
 // ---------------------------------------------------------------- .env sem dependência
@@ -65,6 +66,19 @@ function ehDiaUtil(deslocDias: number) {
   const dia = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short" }).format(d);
   return dia !== "Sat" && dia !== "Sun";
 }
+// Próximo feriado nacional em dia útil dentro de 90 dias (o prompt lista todos eles). Em fim
+// de semana a IA recusaria pelo dia, não pelo feriado — e o teste não provaria nada.
+const feriadoUtil = (() => {
+  const hojeYmd = diaDe(new Date());
+  const limite = diaDe(new Date(Date.now() + 90 * 86_400_000));
+  const ano = Number(hojeYmd.slice(0, 4));
+  return [...feriadosNacionais(ano), ...feriadosNacionais(ano + 1)].find((f) => {
+    if (f.data <= hojeYmd || f.data > limite) return false;
+    const [a, m, d] = f.data.split("-").map(Number);
+    const dow = new Date(Date.UTC(a, m - 1, d, 12)).getUTCDay();
+    return dow !== 0 && dow !== 6;
+  });
+})();
 
 // ---------------------------------------------------------------- uma rodada com o modelo
 type Resultado = ReturnType<typeof parseAiOutput> & { texto: string; bruto: string };
@@ -161,6 +175,18 @@ const TESTES: Teste[] = [
       if (primeira.agendar) return `marcou já na sugestão do cliente (${primeira.agendar.inicio}), sem perguntar se podia confirmar`;
       if (!/\?/.test(primeira.texto)) return "não perguntou se podia confirmar o horário";
       if (!ultima.agendar) return "o cliente disse sim e a IA não emitiu [AGENDAR]";
+      return null;
+    },
+  },
+  {
+    nome: "agenda: nao marca visita em feriado",
+    msgs: [feriadoUtil ? `consigo visitar no dia ${feriadoUtil.data.slice(8, 10)}/${feriadoUtil.data.slice(5, 7)} às 10h?` : "tem visita amanhã?"],
+    checar: (r) => {
+      if (!feriadoUtil) return null;
+      if (r.agendar) return `emitiu [AGENDAR] em feriado (${r.agendar.inicio})`;
+      if (!/feriado|fechad|recesso|não (há|tem|temos|haverá) atendimento/i.test(r.texto)) {
+        return `não avisou que ${feriadoUtil.data} é feriado (${feriadoUtil.nome})`;
+      }
       return null;
     },
   },
