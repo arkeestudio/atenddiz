@@ -297,7 +297,13 @@ export async function runAiReply(opts: {
 
   if (agendar && agendaLigada) {
     const { validarAgendamento, conflita, visitaAtivaDoContato, semIntervalo, descreverHorario, ocupadosLocais } = await import("@/lib/agenda.server");
-    const v = validarAgendamento(agendar, new Date(), { horarios: (cfg as any)?.horarios_atendimento ?? null });
+    // Título + unidade/segmento da ficha: é o que diz de qual unidade é a visita, para a pausa
+    // de almoço certa valer (sem unidade no texto, todas valem).
+    const fichaParaAgenda = (cardRow as any)?.ficha && typeof (cardRow as any).ficha === "object" ? (cardRow as any).ficha : {};
+    const v = validarAgendamento(agendar, new Date(), {
+      horarios: (cfg as any)?.horarios_atendimento ?? null,
+      contexto: [agendar.titulo, fichaParaAgenda.unidade_visita, fichaParaAgenda.segmento].filter((x) => typeof x === "string" && x).join(" "),
+    });
     const nome = (cardRow as any)?.nome || pushName || number;
     const cardId: string | null = (cardRow as any)?.id ?? null;
     if (!v.ok) {

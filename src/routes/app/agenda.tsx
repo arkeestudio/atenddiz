@@ -13,6 +13,7 @@ import { CalendarDays, CheckCircle2, XCircle, MessageSquareText, RefreshCw, Rota
 import { criarAgendamento, editarAgendamento, excluirAgendamento } from "@/lib/agenda.functions";
 import { getBusinessHours } from "@/lib/templates.functions";
 import { feriadoEm } from "@/lib/feriados";
+import { descreverPausa, pausaInvadida } from "@/lib/pausas-visita";
 import type { BusinessHours } from "@/lib/business-hours";
 
 // Visitas marcadas pela IA (ou pela equipe) num lugar só. A IA marca, avisa na conversa e
@@ -415,6 +416,13 @@ function NovaVisitaDialog({ aberta, inicial, onClose, companyId, onCriada, horar
             <div className="space-y-1">
               <Label className="text-[11px]">Hora</Label>
               <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className="h-9" />
+              {(() => {
+                // Almoço da equipe: a equipe pode marcar mesmo assim, mas vê o aviso.
+                const i = new Date(`${data}T${hora || "00:00"}:00-03:00`);
+                if (Number.isNaN(+i)) return null;
+                const p = pausaInvadida(i, new Date(i.getTime() + (Number(duracao) || 40) * 60_000), horarios, titulo);
+                return p ? <p className="text-[11px] text-amber-600 dark:text-amber-400">⚠️ Pausa: {descreverPausa(p)}.</p> : null;
+              })()}
             </div>
             <div className="space-y-1">
               <Label className="text-[11px]">Duração</Label>

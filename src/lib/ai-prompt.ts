@@ -14,6 +14,7 @@ export interface StageBrief {
 
 import type { BusinessHours } from "./business-hours";
 import { diaDe, feriadoEm, feriadosEntre, rotuloCurto } from "./feriados";
+import { pausasDe } from "./pausas-visita";
 
 export interface AgentConfig {
   // Horário de atendimento, feriados e recessos (agent_config.horarios_atendimento). Vem do
@@ -235,7 +236,7 @@ function partesData(d: Date) {
  * repete a expressão do cliente e ninguém — nem a equipe — sabe que dia foi combinado.
  * Entregamos a conta já feita: a data de hoje e a dos próximos dias, no fuso de Brasília.
  */
-type Calendario = Pick<BusinessHours, "feriados" | "feriados_nacionais"> | null;
+type Calendario = Pick<BusinessHours, "feriados" | "feriados_nacionais" | "visitas"> | null;
 
 function calendarioDe(c: Partial<AgentConfig>): Calendario {
   const h = c.horarios_atendimento;
@@ -510,6 +511,20 @@ A primeira data é o início, a segunda é o fim (use ${c.duracao_padrao || "30 
       blocos.push(
         `DIAS SEM VISITA nos próximos 90 dias (feriado ou recesso — não ofereça nem marque; se o cliente pedir, avise e proponha outro dia):\n` +
           semVisita.map((f) => `• ${rotuloCurto(f.data)} — ${f.nome}`).join("\n"),
+      );
+    }
+    // Almoço da equipe. Vale acima do texto de "janelas disponíveis": a escola chegou a
+    // instruir a IA a aceitar qualquer horário, inclusive almoço, e o sistema recusa igual.
+    const pausas = pausasDe(calendarioDe(c));
+    if (pausas.length) {
+      const temUnidade = pausas.some((p) => p.unidade?.trim());
+      blocos.push(
+        `PAUSAS DA EQUIPE — não ofereça nem marque visita que comece ou termine dentro delas, mesmo que a família peça; proponha antes ou depois. ` +
+          `Conte a duração (${c.duracao_padrao || "30 min"}): a visita precisa TERMINAR antes de a pausa começar. Vale acima de qualquer janela descrita acima:\n` +
+          pausas
+            .map((p) => `• ${p.de}–${p.ate}${p.motivo?.trim() ? ` — ${p.motivo.trim()}` : ""}${p.unidade?.trim() ? ` (unidade ${p.unidade.trim()})` : ""}`)
+            .join("\n") +
+          (temUnidade ? `\nSempre coloque a unidade no título do [AGENDAR] (ex.: "Visita Berçário — Centro").` : ""),
       );
     }
     if (opts?.ocupados?.length) {

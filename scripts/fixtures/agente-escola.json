@@ -31,6 +31,12 @@
   "duracao_padrao": "40 min",
   "horarios_disponiveis": "segunda a sexta, das 9h às 17h",
   "antecedencia_min": "1 dia",
+  "horarios_atendimento": {
+    "enabled": false,
+    "timezone": "America/Sao_Paulo",
+    "dias": {},
+    "visitas": { "pausas": [{ "de": "12:00", "ate": "13:00", "motivo": "Almoço da equipe" }] }
+  },
   "ficha_campos": [
     { "id": "segmento", "label": "Segmento", "tipo": "opcoes", "opcoes": ["Berçário", "Educação Infantil", "Fundamental 1", "Fundamental 2", "Não identificado"], "dica": "Pela idade ou série da criança" },
     { "id": "responsavel", "label": "Nome do responsável" },

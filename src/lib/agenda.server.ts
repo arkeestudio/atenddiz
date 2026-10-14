@@ -7,6 +7,7 @@
 import type { AgendarBrief } from "./ai-prompt";
 import type { BusinessHours } from "./business-hours";
 import { diaDe, feriadoEm, rotuloCurto } from "./feriados";
+import { descreverPausa, pausaInvadida } from "./pausas-visita";
 
 const TZ = "America/Sao_Paulo";
 // Antes disso é agenda cheia demais para prometer; depois disso é erro de digitação da IA.
@@ -32,9 +33,10 @@ function diaExiste(iso: string): boolean {
 export function validarAgendamento(
   a: AgendarBrief,
   agora = new Date(),
-  // Com os horários da empresa, feriado nacional e data cadastrada (recesso) recusam a visita.
-  // A equipe, marcando à mão pela Agenda, não passa isso: pode abrir num feriado se quiser.
-  opts?: { horarios?: Pick<BusinessHours, "feriados" | "feriados_nacionais"> | null },
+  // Com os horários da empresa, feriado nacional, data cadastrada (recesso) e pausa da equipe
+  // (almoço) recusam a visita. A equipe, marcando à mão pela Agenda, não passa isso: pode
+  // abrir num feriado ou no almoço se quiser. `contexto` diz a unidade (título + ficha).
+  opts?: { horarios?: Pick<BusinessHours, "feriados" | "feriados_nacionais" | "visitas"> | null; contexto?: string },
 ): Validado {
   if (!diaExiste(a.inicio)) return { ok: false, motivo: "essa data não existe no calendário" };
   const inicio = new Date(a.inicio);
@@ -58,6 +60,8 @@ export function validarAgendamento(
           : `${rotuloCurto(dia)} não tem atendimento (${feriado.nome})`,
       };
     }
+    const pausa = pausaInvadida(inicio, fim, opts.horarios, opts.contexto);
+    if (pausa) return { ok: false, motivo: descreverPausa(pausa) };
   }
   return { ok: true, inicio, fim };
 }

@@ -7,6 +7,9 @@ import { diaDe, feriadoEm } from "./feriados";
 export type DaySchedule = { abre: string; fecha: string } | null;
 // Um dia (ou período) fechado além da grade semanal: recesso, feriado municipal, emenda.
 export type FeriadoEmpresa = { de: string; ate?: string; motivo?: string };
+// Horário do dia em que não se marca visita (almoço da equipe). Com `unidade`, vale só para
+// ela; em branco, para todas. "HH:MM".
+export type PausaVisita = { de: string; ate: string; motivo?: string; unidade?: string };
 export type BusinessHours = {
   enabled: boolean;
   timezone: string;
@@ -21,6 +24,8 @@ export type BusinessHours = {
   feriados?: FeriadoEmpresa[];
   // Feriados nacionais entram sozinhos (padrão). false desliga.
   feriados_nacionais?: boolean;
+  // Regras só da agenda de visitas (o WhatsApp continua sendo atendido nesses horários).
+  visitas?: { pausas?: PausaVisita[] };
 };
 
 // Deslocamento do fuso naquele instante, ex.: "-03:00". Sem biblioteca de datas.

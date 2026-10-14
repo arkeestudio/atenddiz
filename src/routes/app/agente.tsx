@@ -649,6 +649,63 @@ function AgentePage() {
                   <Plus className="size-3.5 mr-1" /> Adicionar data fechada
                 </Button>
               </div>
+
+              {/* Pausas valem só para marcar visita: o WhatsApp continua sendo atendido. */}
+              <div className="space-y-2 pt-3 border-t border-[var(--border)]">
+                <div>
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pausas para visita (almoço da equipe)</Label>
+                  <p className="text-[11.5px] text-muted-foreground">
+                    Nesses horários a IA não oferece nem marca visita, mesmo que a família peça, e o sistema recusa se ela tentar. O WhatsApp continua sendo atendido. Deixe a unidade em branco para valer em todas.
+                  </p>
+                </div>
+                {(horarios.visitas?.pausas ?? []).map((p, i) => {
+                  const mudar = (patch: Partial<typeof p>) =>
+                    setHorarios((prev) => ({
+                      ...prev,
+                      visitas: { ...prev.visitas, pausas: (prev.visitas?.pausas ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) },
+                    }));
+                  return (
+                    <div key={i} className="flex flex-wrap items-center gap-2 text-xs bg-[var(--panel-2)] p-2.5 rounded-lg border border-[var(--border)]">
+                      <Input type="time" value={p.de} onChange={(e) => mudar({ de: e.target.value })} className="h-7 w-24 text-xs py-0 px-1" />
+                      <span className="text-muted-foreground">às</span>
+                      <Input type="time" value={p.ate} onChange={(e) => mudar({ ate: e.target.value })} className="h-7 w-24 text-xs py-0 px-1" />
+                      <Input value={p.motivo ?? ""} onChange={(e) => mudar({ motivo: e.target.value })} placeholder="Motivo (ex.: almoço)" className="h-7 w-36 text-xs" />
+                      <Input
+                        value={p.unidade ?? ""}
+                        onChange={(e) => mudar({ unidade: e.target.value })}
+                        placeholder="Unidade (opcional, ex.: Centro)"
+                        className="h-7 flex-1 min-w-44 text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-muted-foreground hover:text-red-600"
+                        onClick={() =>
+                          setHorarios((prev) => ({ ...prev, visitas: { ...prev.visitas, pausas: (prev.visitas?.pausas ?? []).filter((_, j) => j !== i) } }))
+                        }
+                        title="Remover"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() =>
+                    setHorarios((prev) => ({
+                      ...prev,
+                      visitas: { ...prev.visitas, pausas: [...(prev.visitas?.pausas ?? []), { de: "12:00", ate: "13:00", motivo: "Almoço", unidade: "" }] },
+                    }))
+                  }
+                >
+                  <Plus className="size-3.5 mr-1" /> Adicionar pausa
+                </Button>
+              </div>
             </div>
           </Section>
 
